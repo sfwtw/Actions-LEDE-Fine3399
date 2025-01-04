@@ -82,15 +82,6 @@ jobs:
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /mnt/workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-        # Apply patches forcefully if patches directory exists
-        if [ -d patches ]; then
-          cd openwrt
-          for patch_file in $(find ../patches -type f -name "*.patch"); do
-            echo "Applying patch: $patch_file"
-            patch -p1 --force < "$patch_file" || true
-          done
-        fi
     
     - name: 缓存构建动作
       uses: klever1988/cachewrtbuild@main
@@ -128,6 +119,18 @@ jobs:
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
+
+    - name: 补丁
+      run: |
+        # 检查并应用补丁
+        if [ -d patches ]; then
+          echo "发现补丁目录，开始应用补丁..."
+          cd openwrt
+          git apply --reject --whitespace=fix $GITHUB_WORKSPACE/patches/*.patch
+        else
+          echo "未发现补丁目录，跳过补丁应用步骤"
+        fi
+        ls package/luci-app-modem/root/etc
 
     - name: 编译固件
       id: compile
