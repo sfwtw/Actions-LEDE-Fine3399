@@ -58,9 +58,6 @@ jobs:
           
           if [ "$last_commit" != "$current_commit" ]; then
             echo "检测到更新，获取更新内容..."
-            # 标记触发来源为cs检查器
-            echo "cs_checker" > ../.cache/trigger_source.txt
-            echo "${current_commit}" > ../.cache/last_commit.txt
             echo "has_updates=true" >> $GITHUB_OUTPUT
             
             # 触发编译工作流
