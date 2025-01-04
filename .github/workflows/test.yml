@@ -27,7 +27,7 @@ env:
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
-  BUILD_TYPE: ${{ github.event_name == 'workflow_dispatch' && '手动编译' || '自动编译' }}
+  BUILD_TYPE: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}  # 改用英文
   TZ: Asia/Shanghai
   RELEASE_TAG: 'OpenWrt-Releases'  # 添加固定tag名称
   CACHE_VERSION: "v1"  # 用于缓存版本控制
@@ -156,15 +156,37 @@ jobs:
         cd openwrt/bin/targets/*/*
         rm -rf packages
         BUILD_DATE=$(date +"%Y%m%d_%H%M")
-        BUILD_TYPE_SHORT="${BUILD_TYPE:0:2}"  # 取编译类型前两个字符
-        FIRMWARE_NAME="openwrt_${BUILD_TYPE_SHORT}_${BUILD_DATE}"
+        FIRMWARE_NAME="openwrt_${BUILD_TYPE}_${BUILD_DATE}"
         
-        # 创建打包目录
+        # 创建打包目录并移动文件
         mkdir -p $FIRMWARE_NAME
         mv * $FIRMWARE_NAME/ 2>/dev/null || true
         
-        # 打包固件
+        # 使用临时目录进行打包
+        TMP_DIR=$(mktemp -d)
+        cp -r $FIRMWARE_NAME $TMP_DIR/
+        cd $TMP_DIR
+        
+        # 打包固件并验证
         zip -r "${FIRMWARE_NAME}.zip" $FIRMWARE_NAME/
+        if [ ! -f "${FIRMWARE_NAME}.zip" ]; then
+          echo "错误: 打包失败"
+          exit 1
+        fi
+        
+        # 移动打包文件到原目录
+        mv "${FIRMWARE_NAME}.zip" $OLDPWD/
+        cd $OLDPWD
+        rm -rf $TMP_DIR
+        
+        # 验证最终文件
+        if [ ! -f "${FIRMWARE_NAME}.zip" ]; then
+          echo "错误: 文件移动失败"
+          exit 1
+        fi
+        
+        actual_size=$(stat -f%z "${FIRMWARE_NAME}.zip" 2>/dev/null || stat -c%s "${FIRMWARE_NAME}.zip")
+        echo "文件大小: ${actual_size} bytes"
         
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV

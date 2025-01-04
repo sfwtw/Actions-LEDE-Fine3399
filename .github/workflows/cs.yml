@@ -53,11 +53,11 @@ jobs:
               echo "检测到新更新，触发编译流程..."
               echo "has_updates=true" >> $GITHUB_OUTPUT
               
-              # 触发编译工作流
+              # 触发编译工作流，使用 auto 类型
               curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
                 -H "Accept: application/vnd.github.v3+json" \
                 -H "Authorization: token ${{ secrets.TOKEN }}" \
-                -d "{\"event_type\":\"test\"}" \
+                -d "{\"event_type\":\"test\", \"client_payload\":{\"build_type\":\"auto\"}}" \
                 || echo "触发编译失败，请检查 TOKEN 权限"
             else
               echo "当前已是最新版本"
