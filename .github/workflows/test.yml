@@ -118,8 +118,14 @@ jobs:
         echo "---" >> release.txt
         [ ${UPLOAD_GOFILE:-false} = true ] && [ -n "${{ steps.gofile.outputs.url }}" ] && echo "🔗 [GoFile下载](${{ steps.gofile.outputs.url }})" >> release.txt
         if [ -n "${{ github.event.client_payload.commit_title }}" ]; then
+          echo "Debug - Raw commit_title:"
+          echo "${{ github.event.client_payload.commit_title }}"
+          echo "Debug - Decoded commit_title:"
+          echo "${{ github.event.client_payload.commit_title }}" | base64 -d
           echo "${{ github.event.client_payload.commit_title }}" | base64 -d >> release.txt
         fi 
+        echo "Debug - Final release.txt content:"
+        cat release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: 自动发布固件到 Releases
