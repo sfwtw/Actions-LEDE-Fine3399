@@ -3,90 +3,54 @@ name: cs Update Checker
 env:
   REPO_URL: https://github.com/sfwtw/Actions-LEDE-Fine3399
   REPO_BRANCH: main
-  TZ: Asia/Shanghai  # 设置时区为中国时间
+  TZ: Asia/Shanghai
 
 on:
-  workflow_dispatch:  # 支持手动触发
-  # schedule:
-    # - cron: '0 */12 * * *'  # 每12小时运行一次
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */12 * * *'
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    permissions:
-      actions: write      # 工作流权限
-      contents: read      # 仓库读取权限
+    outputs:
+      has_updates: ${{ steps.check_updates.outputs.has_updates }}
     
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 1
-
-      - name: 获取上次提交记录
-        id: getLastHash
+      - name: 检查更新
+        id: check_updates
         run: |
-          if [ -f .commitHash ]; then
-            echo "lastHash=$(cat .commitHash)" >> $GITHUB_OUTPUT
-          else
-            echo "lastHash=" >> $GITHUB_OUTPUT
-          fi
-        
-      - name: 获取最新提交信息
-        id: getHash
-        run: |
-          mkdir -p workspace
-          cd workspace
-          git clone --depth 100 $REPO_URL -b $REPO_BRANCH . || exit 1
-          current_hash=$(git rev-parse HEAD)
-          echo "commitHash=$current_hash" >> $GITHUB_OUTPUT
+          set -e
+          echo "::group::克隆仓库"
+          git clone --depth 1 $REPO_URL -b $REPO_BRANCH temp
+          cd temp
           
-          if [ ! -z "${{ steps.getLastHash.outputs.lastHash }}" ]; then
-            echo "最新提交变更:" > ../commit_msg.txt
-            echo "-------------------" >> ../commit_msg.txt
-            git log --pretty=format:'- %h: %s' ${{ steps.getLastHash.outputs.lastHash }}..$current_hash >> ../commit_msg.txt
-            echo -e "\n-------------------" >> ../commit_msg.txt
+          # 获取最新提交信息
+          LATEST_COMMIT=$(git rev-parse HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          
+          echo "最新提交: ${LATEST_COMMIT}"
+          echo "提交信息: ${COMMIT_MSG}"
+          echo "::endgroup::"
+          
+          if [ -n "$(git log -1)" ]; then
+            echo "检测到更新，触发编译..."
+            echo "has_updates=true" >> $GITHUB_OUTPUT
             
-            # 获取所有新提交的完整 SHA 值
-            all_shas=$(git log --format='%H' ${{ steps.getLastHash.outputs.lastHash }}..$current_hash | tr '\n' ',' | sed 's/,$//')
-            echo "allShas=$all_shas" >> $GITHUB_OUTPUT
-            
-            # 处理提交信息
-            commit_msg=$(cat ../commit_msg.txt | tr '\n' ' ' | sed 's/"/\\"/g')
-            echo "commitTitle=$commit_msg" >> $GITHUB_OUTPUT
+            # 触发编译工作流
+            curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
+              -H "Accept: application/vnd.github.v3+json" \
+              -H "Authorization: token ${{ secrets.TOKEN }}" \
+              -d "{\"event_type\":\"test\"}" \
+              || echo "触发编译失败，请检查 TOKEN 权限"
+          else
+            echo "没有检测到更新"
+            echo "has_updates=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: 比对提交哈希值
-        id: cacheHash
-        uses: actions/cache@v3
-        with:
-          path: .commitHash
-          key: commitHash_${{ steps.getHash.outputs.commitHash }}
-          restore-keys: |
-            commitHash_
-
-      - name: 保存新的提交哈希值
-        if: steps.cacheHash.outputs.cache-hit != 'true'
-        run: |
-          echo ${{ steps.getHash.outputs.commitHash }} | tee .commitHash
-
-      - name: 触发编译
-        if: steps.cacheHash.outputs.cache-hit != 'true'
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.TOKEN }}
-          repository: ${{ github.repository }}
-          event-type: test
-          client-payload: |
-            {
-              "ref": "${{ github.ref }}",
-              "sha": "${{ steps.getHash.outputs.allShas }}",
-              "commit_msg": "${{ steps.getHash.outputs.commitTitle }}"
-            }
-
-      - name: 清理旧的工作流记录
+      - name: 清理工作流记录
+        if: always()
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          retain_days: 0
-          keep_minimum_runs: 2
-          # delete_workflow_pattern: update-checker.yml  # 只清理当前工作流
+          retain_days: 1
+          keep_minimum_runs: 3
