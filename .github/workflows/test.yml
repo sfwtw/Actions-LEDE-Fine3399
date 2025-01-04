@@ -27,7 +27,10 @@ env:
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
+  BUILD_TYPE: ${{ github.event_name == 'workflow_dispatch' && '手动编译' || '自动编译' }}
   TZ: Asia/Shanghai
+  RELEASE_TAG: 'OpenWrt-Releases'  # 添加固定tag名称
+  CACHE_VERSION: "v1"  # 用于缓存版本控制
  
 jobs:
   build:
@@ -42,13 +45,13 @@ jobs:
       uses: actions/cache@v3
       with:
         path: |
+          .cache/updates_1.txt
+          .cache/updates_2.txt
+          .cache/updates_3.txt
           .cache/last_commit.txt
-          .cache/commit_log.txt
-          .cache/commit_details.txt
-        key: commit-cache-${{ github.sha }}-${{ steps.check_update.outputs.commit_count }}
+        key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.sha }}
         restore-keys: |
-          commit-cache-${{ github.sha }}-
-          commit-cache-
+          commit-cache-${{ env.CACHE_VERSION }}-
 
     - name: 检查更新状态
       id: check_update
@@ -61,34 +64,37 @@ jobs:
         current_commit=$(git rev-parse HEAD)
         echo "当前最新提交: ${current_commit}"
         
-        # 获取缓存的提交记录
         if [ -f ../.cache/last_commit.txt ]; then
           last_commit=$(cat ../.cache/last_commit.txt)
           echo "上次构建的提交: ${last_commit}"
         else
-          # 首次运行，获取最近一次提交的父提交
           last_commit=$(git rev-parse HEAD^)
           echo "首次运行，使用上一次提交: ${last_commit}"
-          echo "${last_commit}" > ../.cache/last_commit.txt
         fi
-        echo "::endgroup::"
-
-        # 确保有变更时才保存日志
+        
+        # 转移历史更新记录
+        if [ -f ../.cache/updates_2.txt ]; then
+          mv ../.cache/updates_2.txt ../.cache/updates_3.txt
+        fi
+        if [ -f ../.cache/updates_1.txt ]; then
+          mv ../.cache/updates_1.txt ../.cache/updates_2.txt
+        fi
+        
+        # 生成新的更新记录
         if [ "$last_commit" != "$current_commit" ]; then
           echo "::group::获取更新信息"
-          # 保存提交日志
-          git log --pretty=format:'%h: %s' $last_commit..$current_commit > ../.cache/commit_log.txt
-          # 保存完整提交信息
-          git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit > ../.cache/commit_details.txt
-          # 更新最后提交记录
+          {
+            echo "编译时间: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "编译类型: ${BUILD_TYPE}"
+            echo "更新内容:"
+            git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit
+          } > ../.cache/updates_1.txt
+          
           echo "${current_commit}" > ../.cache/last_commit.txt
           echo "has_updates=true" >> $GITHUB_OUTPUT
-          echo "commit_count=$(git rev-list --count $last_commit..$current_commit)" >> $GITHUB_OUTPUT
-          echo "::endgroup::"
         else
           echo "没有检测到新的提交"
           echo "has_updates=false" >> $GITHUB_OUTPUT
-          echo "commit_count=0" >> $GITHUB_OUTPUT
         fi
 
     - name: 初始化编译环境
@@ -149,57 +155,73 @@ jobs:
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages
+        BUILD_DATE=$(date +"%Y%m%d_%H%M")
+        mkdir -p $BUILD_DATE
+        mv * $BUILD_DATE/ 2>/dev/null || true
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: 上传固件目录
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+        name: OpenWrt_firmware_${{ env.BUILD_DATE }}
+        path: ${{ env.FIRMWARE }}/${{ env.BUILD_DATE }}
 
     - name: 生成发布标签
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.organize.outputs.status == 'success'
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         {
-          echo "📥 固件说明"
-          echo "🔺 此固件为自动编译"
-          echo "🔺 发布时间: $(date +"%Y年%m月%d日 %H点%M分")"
+          echo "📥 OpenWrt 固件总览"
+          echo "-------------------"
+          echo "🔸 最新编译信息"
+          echo "- 编译类型: ${BUILD_TYPE}"
+          echo "- 编译时间: $(date +"%Y年%m月%d日 %H点%M分")"
+          echo ""
+          echo "🔸 最近三次编译更新记录:"
+          echo "-------------------"
           
-          if [ -f .cache/commit_details.txt ]; then
-            echo "🔺 最新更新内容:"
-            echo "-------------------"
-            while IFS='|' read -r full_hash short_hash subject author timestamp; do
-              date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M")
-              echo "- [$short_hash] $subject"
-              echo "  作者: $author"
-              echo "  时间: $date"
-            done < .cache/commit_details.txt
-            echo "-------------------"
-          fi
+          for i in {1..3}; do
+            if [ -f ".cache/updates_${i}.txt" ]; then
+              echo "✨ 第${i}次编译记录"
+              while IFS= read -r line; do
+                if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                  echo "  $line"
+                elif [[ $line == "更新内容:" ]]; then
+                  echo "  $line"
+                else
+                  IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"
+                  if [ ! -z "$short_hash" ]; then
+                    date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M")
+                    echo "  - [$short_hash] $subject"
+                    echo "    作者: $author"
+                    echo "    时间: $date"
+                  fi
+                fi
+              done < ".cache/updates_${i}.txt"
+              echo ""
+            fi
+          done
           
+          echo "-------------------"
+          echo "🔺 此发布包含最近3次编译的固件"
           echo "🔺 仅供测试使用，风险自负"
-          echo "---"
-          [ ${UPLOAD_GOFILE:-false} = true ] && echo "🔗 [GoFile下载](${{ steps.gofile.outputs.url }})"
         } > release.txt
-        
-        echo "::group::Release Content"
-        cat release.txt
-        echo "::endgroup::"
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: 自动发布固件到 Releases
+    - name: 发布固件到 Releases
       uses: softprops/action-gh-release@master
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.TOKEN }}
       with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
+        tag_name: ${{ env.RELEASE_TAG }}
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+        files: ${{ env.FIRMWARE }}/${{ env.BUILD_DATE }}/*
+        prerelease: false
+        draft: false
 
     - name: 删除运行记录
       uses: Mattraks/delete-workflow-runs@main
@@ -207,11 +229,12 @@ jobs:
         retain_days: 0
         keep_minimum_runs: 2
 
-    - name: 删除自动发布的旧固件
+    - name: 清理旧固件文件
       uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.tag.outputs.status == 'success'
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       with:
-        keep_latest: 2
-        delete_tags: true
+        keep_latest: 3
+        delete_tags: false
+        delete_tag_pattern: ^(?!OpenWrt-Releases).*$
       env:
         GITHUB_TOKEN: ${{ secrets.TOKEN }}
