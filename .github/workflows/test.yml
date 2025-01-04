@@ -120,7 +120,7 @@ jobs:
         [ ${UPLOAD_GOFILE:-false} = true ] && [ -n "${{ steps.gofile.outputs.url }}" ] && echo "🔗 [GoFile下载](${{ steps.gofile.outputs.url }})" >> release.txt
         if [ -n "${{ github.event.client_payload.commit_msg }}" ]; then
           echo "Debug - Commit message:"
-          echo "${{ github.event.client_payload.commit_msg }}" | base64 -d >> release.txt
+          echo "${{ github.event.client_payload.commit_msg }}" >> release.txt
         fi 
         echo "Debug - Final release.txt content:"
         cat release.txt

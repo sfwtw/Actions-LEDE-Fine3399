@@ -47,7 +47,7 @@ jobs:
             git log --pretty=format:'%h - %s' ${{ steps.getLastHash.outputs.lastHash }}..$current_hash | 
             awk '{print "["NR"] "$0"\n"}' >> ../commit_msg.txt
             echo "-------------------" >> ../commit_msg.txt
-            echo "commitTitle=$(cat ../commit_msg.txt | base64 -w 0)" >> $GITHUB_OUTPUT
+            echo "commitTitle=$(cat ../commit_msg.txt)" >> $GITHUB_OUTPUT
             
             # 添加调试输出
             echo "Debug - commit_msg.txt content:"
