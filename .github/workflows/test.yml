@@ -31,9 +31,12 @@ env:
   TZ: Asia/Shanghai
   RELEASE_TAG: 'OpenWrt-Releases'  # 添加固定tag名称
   CACHE_VERSION: "v1"  # 用于缓存版本控制
-  RELEASE_TAG_1: 'OpenWrt_001'  # 添加三个固定tag名称
-  RELEASE_TAG_2: 'OpenWrt_002'
-  RELEASE_TAG_3: 'OpenWrt_003'
+  FIRMWARE_PREFIX: 'openwrt'  # 固件前缀
+  # 添加固定序号变量
+  VERSION_LATEST: '001'
+  VERSION_PREVIOUS: '002' 
+  VERSION_OLDEST: '003'
+  ARTIFACT_DIR: './firmware_archives'
  
 jobs:
   build:
@@ -98,7 +101,6 @@ jobs:
         else
           echo "没有检测到新的提交"
           echo "has_updates=false" >> $GITHUB_OUTPUT
-        fi
 
     - name: 初始化编译环境
       env:
@@ -152,48 +154,48 @@ jobs:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: openwrt/bin
 
+    - name: 下载已有固件
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        mkdir -p ${{ env.ARTIFACT_DIR }}
+        # 尝试下载现有版本
+        gh release download ${{ env.RELEASE_TAG }} -D ${{ env.ARTIFACT_DIR }} || true
+      env:
+        GH_TOKEN: ${{ secrets.TOKEN }}
+
     - name: 整理固件文件
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages
-        BUILD_DATE=$(date +"%Y%m%d_%H%M")
-        FIRMWARE_NAME="openwrt_${BUILD_TYPE}_${BUILD_DATE}"
         
-        # 创建打包目录并移动文件
-        mkdir -p $FIRMWARE_NAME
-        mv * $FIRMWARE_NAME/ 2>/dev/null || true
+        # 创建新版本目录
+        NEW_VERSION="${FIRMWARE_PREFIX}_${VERSION_LATEST}"
+        mkdir -p $NEW_VERSION
+        mv * $NEW_VERSION/ 2>/dev/null || true
         
-        # 直接在当前目录打包
-        zip -r "${FIRMWARE_NAME}.zip" $FIRMWARE_NAME/
-        if [ ! -f "${FIRMWARE_NAME}.zip" ]; then
-          echo "错误: 打包失败"
-          exit 1
+        # 打包新版本
+        zip -r "${NEW_VERSION}.zip" $NEW_VERSION/
+        
+        # 移动到统一目录
+        mkdir -p ${{ env.ARTIFACT_DIR }}
+        mv "${NEW_VERSION}.zip" ${{ env.ARTIFACT_DIR }}/
+        
+        # 处理版本轮转
+        cd ${{ env.ARTIFACT_DIR }}
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
+          mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+        fi
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
+          mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
         fi
         
-        # 验证文件大小
-        actual_size=$(stat -f%z "${FIRMWARE_NAME}.zip" 2>/dev/null || stat -c%s "${FIRMWARE_NAME}.zip")
-        echo "文件大小: ${actual_size} bytes"
+        # 移动新版本到001位置
+        mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
         
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
-        echo "FIRMWARE_NAME=$FIRMWARE_NAME" >> $GITHUB_ENV
+        echo "FIRMWARE=${{ env.ARTIFACT_DIR }}" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: 更新发布标签
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.organize.outputs.status == 'success'
-      run: |
-        # 移动旧的发布标签
-        if gh release view ${{ env.RELEASE_TAG_2 }} &>/dev/null; then
-          gh release delete ${{ env.RELEASE_TAG_3 }} -y || true
-          gh release edit ${{ env.RELEASE_TAG_2 }} --tag ${{ env.RELEASE_TAG_3 }}
-        fi
-        if gh release view ${{ env.RELEASE_TAG_1 }} &>/dev/null; then
-          gh release edit ${{ env.RELEASE_TAG_1 }} --tag ${{ env.RELEASE_TAG_2 }}
-        fi
-      env:
-        GH_TOKEN: ${{ secrets.TOKEN }}
 
     - name: 生成发布说明
       id: release_note
@@ -203,31 +205,34 @@ jobs:
         REPO_NAME=$(echo $REPO_URL | cut -d'/' -f5 | cut -d'.' -f1)
         
         {
-          echo "## 📥 OpenWrt 固件发布 (最新版本)"
+          echo "## 📥 OpenWrt 固件发布"
+          echo ""
+          echo "### 🔸 版本信息"
+          echo "- 当前版本：${FIRMWARE_PREFIX}_${VERSION_LATEST} (最新)"
+          if [ -f "${{ env.ARTIFACT_DIR }}/${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
+            echo "- 历史版本：${FIRMWARE_PREFIX}_${VERSION_PREVIOUS} (上一版)"
+          fi
+          if [ -f "${{ env.ARTIFACT_DIR }}/${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip" ]; then
+            echo "           ${FIRMWARE_PREFIX}_${VERSION_OLDEST} (最早版)"
+          fi
           echo ""
           echo "### 🔸 编译信息"
-          echo "- 发布版本：OpenWrt_001 (最新)"
           echo "- 编译类型：${BUILD_TYPE}"
           echo "- 编译时间：$(date +"%Y年%m月%d日 %H:%M")"
-          echo "- 固件文件：${FIRMWARE_NAME}.zip"
-          echo ""
-          echo "### 🔸 历史版本"
-          echo "- OpenWrt_002 (上一版本)"
-          echo "- OpenWrt_003 (最早版本)"
           echo ""
           echo "### 🔸 更新内容"
-        
+          
           if [ -f ".cache/updates_1.txt" ]; then
             while IFS= read -r line; do
               if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
-                echo "- $line"
+                continue
               elif [[ $line == "更新内容:" ]]; then
-                echo "- 更新内容："
+                echo "本次更新："
               else
                 if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
                   if [ ! -z "$short_hash" ]; then
                     commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
-                    echo "  - [<code title=\"完整Hash: ${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject} ($author - $commit_date)"
+                    echo "  - [<code title=\"${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
                   fi
                 fi
               fi
@@ -235,10 +240,12 @@ jobs:
           fi
           
           echo ""
-          echo "### 📝 注意事项"
-          echo "- 此版本仅供测试使用，风险自负"
-          echo "- 保留最近3个版本，按001/002/003编号"
-          echo "- 新版本发布时，旧版本会自动后移"
+          echo "### 📝 说明事项"
+          echo "- 此固件仅供测试使用，风险自负"
+          echo "- 固件版本号说明："
+          echo "  * _001：最新编译版本"
+          echo "  * _002：上一次编译版本"
+          echo "  * _003：最早保留版本"
         } > release.txt
 
     - name: 发布固件
@@ -246,11 +253,11 @@ jobs:
       if: steps.release_note.outputs.status != 'failed' && !cancelled()
       with:
         token: ${{ secrets.TOKEN }}
-        tag: ${{ env.RELEASE_TAG_1 }}
+        tag: ${{ env.RELEASE_TAG }}
         bodyFile: release.txt
-        artifacts: "${{ env.FIRMWARE }}/${{ env.FIRMWARE_NAME }}.zip"
+        artifacts: "${{ env.ARTIFACT_DIR }}/*.zip"
         allowUpdates: true
-        removeArtifacts: false
+        removeArtifacts: true
         replacesArtifacts: true
 
     - name: 删除运行记录
