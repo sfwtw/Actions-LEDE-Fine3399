@@ -96,6 +96,7 @@ jobs:
           echo "没有检测到新的提交"
           echo "has_updates=false" >> $GITHUB_OUTPUT
         fi
+
     - name: 初始化编译环境
       env:
         DEBIAN_FRONTEND: noninteractive
