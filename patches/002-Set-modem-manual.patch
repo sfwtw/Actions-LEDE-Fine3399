@@ -1,19 +1,17 @@
-diff --git a/package/luci-app-modem/root/etc/hotplug.d b/package/luci-app-modem/root/etc/hotplug.d
-deleted file mode 100644
-index 0000000..0000000
---- a/package/luci-app-modem/root/etc/hotplug.d
-+++ /dev/null
-@@ -1 +0,0 @@
--
 diff --git a/package/luci-app-modem/root/etc/config/modem b/package/luci-app-modem/root/etc/config/modem
 index 1234567..89abcde 100644
 --- a/package/luci-app-modem/root/etc/config/modem
 +++ b/package/luci-app-modem/root/etc/config/modem
-@@ -1,6 +1,6 @@
-
+@@ -1,4 +1,4 @@
  config global 'global'
-        option enable_dial '1'
-        option modem_number '0'
 -       option manual_configuration '0'
 +       option manual_configuration '1'
+        option enable_dial '1'
+        option modem_number '0'
         option network_interface_alias '1'
+diff --git a/package/luci-app-modem/root/etc/hotplug.d b/package/luci-app-modem/root/etc/hotplug.d
+deleted file mode 160000
+--- a/package/luci-app-modem/root/etc/hotplug.d
++++ /dev/null
+@@ -1 +0,0 @@
+-Subproject commit 0000000000000000000000000000000000000000

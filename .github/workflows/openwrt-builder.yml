@@ -122,7 +122,6 @@ jobs:
 
     - name: 补丁
       run: |
-        # 检查并应用补丁
         if [ -d patches ]; then
           echo "发现补丁目录，开始应用补丁..."
           cd openwrt
@@ -130,7 +129,6 @@ jobs:
         else
           echo "未发现补丁目录，跳过补丁应用步骤"
         fi
-        ls package/luci-app-modem/root/etc
 
     - name: 编译固件
       id: compile
