@@ -194,30 +194,35 @@ jobs:
           
           for i in {1..3}; do
             if [ -f ".cache/updates_${i}.txt" ]; then
-              # 从更新记录文件中获取编译类型和时间
+              # 从更新记录文件中获取编译类型和时间，并正确处理日期格式
               build_type=$(grep "编译类型:" ".cache/updates_${i}.txt" | cut -d: -f2 | tr -d ' ')
-              build_time=$(grep "编译时间:" ".cache/updates_${i}.txt" | cut -d: -f2- | tr -d ' ')
-              build_date=$(date -d "$build_time" +"%Y%m%d_%H%M")
-              build_type_short="${build_type:0:2}"
-              record_name="openwrt_${build_type_short}_${build_date}"
-              
-              echo "✨ ${record_name}"
-              while IFS= read -r line; do
-                if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
-                  echo "  $line"
-                elif [[ $line == "更新内容:" ]]; then
-                  echo "  $line"
-                else
-                  IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"
-                  if [ ! -z "$short_hash" ]; then
-                    date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M")
-                    echo "  - [$short_hash] $subject"
-                    echo "    作者: $author"
-                    echo "    时间: $date"
+              build_time=$(grep "编译时间:" ".cache/updates_${i}.txt" | cut -d: -f2- | sed 's/^[[:space:]]*//')
+              # 使用 date 命令解析时间戳，确保格式正确
+              if build_date=$(date -d "${build_time}" +"%Y%m%d_%H%M" 2>/dev/null); then
+                build_type_short="${build_type:0:2}"
+                record_name="openwrt_${build_type_short}_${build_date}"
+                
+                echo "✨ ${record_name}"
+                while IFS= read -r line; do
+                  if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                    echo "  $line"
+                  elif [[ $line == "更新内容:" ]]; then
+                    echo "  $line"
+                  else
+                    if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
+                      if [ ! -z "$short_hash" ]; then
+                        commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                        echo "  - [$short_hash] $subject"
+                        echo "    作者: $author"
+                        echo "    时间: $commit_date"
+                      fi
+                    fi
                   fi
-                fi
-              done < ".cache/updates_${i}.txt"
-              echo ""
+                done < ".cache/updates_${i}.txt"
+                echo ""
+              else
+                echo "警告: 跳过无效的日期记录"
+              fi
             fi
           done
           
