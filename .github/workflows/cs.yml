@@ -48,6 +48,12 @@ jobs:
             awk '{print "["NR"] "$0"\n"}' >> ../commit_msg.txt
             echo "-------------------" >> ../commit_msg.txt
             echo "commitTitle=$(cat ../commit_msg.txt | base64 -w 0)" >> $GITHUB_OUTPUT
+            
+            # 添加调试输出
+            echo "Debug - commit_msg.txt content:"
+            cat ../commit_msg.txt
+            echo "Debug - base64 encoded commitTitle:"
+            echo "$(cat ../commit_msg.txt | base64 -w 0)"
           fi
 
       - name: 比对提交哈希值
@@ -63,7 +69,6 @@ jobs:
         if: steps.cacheHash.outputs.cache-hit != 'true'
         run: |
           echo ${{ steps.getHash.outputs.commitHash }} | tee .commitHash
-          echo ${{ steps.getHash.outputs.commitTitle }} | base64 -d
 
       - name: 触发编译
         if: steps.cacheHash.outputs.cache-hit != 'true'
