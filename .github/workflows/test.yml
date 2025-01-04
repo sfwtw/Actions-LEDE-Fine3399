@@ -156,18 +156,27 @@ jobs:
         cd openwrt/bin/targets/*/*
         rm -rf packages
         BUILD_DATE=$(date +"%Y%m%d_%H%M")
-        mkdir -p $BUILD_DATE
-        mv * $BUILD_DATE/ 2>/dev/null || true
+        BUILD_TYPE_SHORT="${BUILD_TYPE:0:2}"  # 取编译类型前两个字符
+        FIRMWARE_NAME="openwrt_${BUILD_TYPE_SHORT}_${BUILD_DATE}"
+        
+        # 创建打包目录
+        mkdir -p $FIRMWARE_NAME
+        mv * $FIRMWARE_NAME/ 2>/dev/null || true
+        
+        # 打包固件
+        zip -r "${FIRMWARE_NAME}.zip" $FIRMWARE_NAME/
+        
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+        echo "FIRMWARE_NAME=$FIRMWARE_NAME" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: 上传固件目录
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware_${{ env.BUILD_DATE }}
-        path: ${{ env.FIRMWARE }}/${{ env.BUILD_DATE }}
+        name: ${{ env.FIRMWARE_NAME }}
+        path: ${{ env.FIRMWARE }}/${{ env.FIRMWARE_NAME }}.zip
 
     - name: 生成发布标签
       id: tag
@@ -180,12 +189,19 @@ jobs:
           echo "- 编译类型: ${BUILD_TYPE}"
           echo "- 编译时间: $(date +"%Y年%m月%d日 %H点%M分")"
           echo ""
-          echo "🔸 最近三次编译更新记录:"
+          echo "🔸 编译记录:"
           echo "-------------------"
           
           for i in {1..3}; do
             if [ -f ".cache/updates_${i}.txt" ]; then
-              echo "✨ 第${i}次编译记录"
+              # 从更新记录文件中获取编译类型和时间
+              build_type=$(grep "编译类型:" ".cache/updates_${i}.txt" | cut -d: -f2 | tr -d ' ')
+              build_time=$(grep "编译时间:" ".cache/updates_${i}.txt" | cut -d: -f2- | tr -d ' ')
+              build_date=$(date -d "$build_time" +"%Y%m%d_%H%M")
+              build_type_short="${build_type:0:2}"
+              record_name="openwrt_${build_type_short}_${build_date}"
+              
+              echo "✨ ${record_name}"
               while IFS= read -r line; do
                 if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
                   echo "  $line"
@@ -206,6 +222,9 @@ jobs:
           done
           
           echo "-------------------"
+          echo "📦 当前固件"
+          echo "- 文件名: ${FIRMWARE_NAME}.zip"
+          echo ""
           echo "🔺 此发布包含最近3次编译的固件"
           echo "🔺 仅供测试使用，风险自负"
         } > release.txt
@@ -219,7 +238,7 @@ jobs:
       with:
         tag_name: ${{ env.RELEASE_TAG }}
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/${{ env.BUILD_DATE }}/*
+        files: ${{ env.FIRMWARE }}/${{ env.FIRMWARE_NAME }}.zip
         prerelease: false
         draft: false
 

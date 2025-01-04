@@ -4,6 +4,7 @@ env:
   REPO_URL: https://github.com/sfwtw/Actions-LEDE-Fine3399
   REPO_BRANCH: main
   TZ: Asia/Shanghai
+  CACHE_VERSION: "v1"  # 添加缓存版本控制
 
 on:
   workflow_dispatch:
@@ -26,20 +27,16 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
+            .cache/updates_1.txt
             .cache/last_commit.txt
-            .cache/commit_log.txt
-            .cache/commit_details.txt
-            .cache/trigger_source.txt
-          key: commit-cache-${{ github.sha }}-${{ steps.check_updates.outputs.commit_count }}
+          key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.sha }}
           restore-keys: |
-            commit-cache-${{ github.sha }}-
-            commit-cache-
+            commit-cache-${{ env.CACHE_VERSION }}-
 
       - name: 检查更新
         id: check_updates
         run: |
           mkdir -p .cache
-          
           echo "::group::克隆仓库"
           git clone --depth 100 $REPO_URL -b $REPO_BRANCH temp
           cd temp
@@ -47,17 +44,27 @@ jobs:
           current_commit=$(git rev-parse HEAD)
           echo "当前最新提交: ${current_commit}"
           
+          # 读取缓存中的最后提交记录
           if [ -f ../.cache/last_commit.txt ]; then
-            last_commit=$(cat ../.cache/last_commit.txt)
-            echo "上次构建的提交: ${last_commit}"
+            cached_commit=$(cat ../.cache/last_commit.txt)
+            echo "缓存的最后提交: ${cached_commit}"
+            
+            if [ "$cached_commit" != "$current_commit" ]; then
+              echo "检测到新更新，触发编译流程..."
+              echo "has_updates=true" >> $GITHUB_OUTPUT
+              
+              # 触发编译工作流
+              curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H "Authorization: token ${{ secrets.TOKEN }}" \
+                -d "{\"event_type\":\"test\"}" \
+                || echo "触发编译失败，请检查 TOKEN 权限"
+            else
+              echo "当前已是最新版本"
+              echo "has_updates=false" >> $GITHUB_OUTPUT
+            fi
           else
-            last_commit=$(git rev-parse HEAD^)
-            echo "首次运行，使用上一次提交: ${last_commit}"
-          fi
-          echo "::endgroup::"
-          
-          if [ "$last_commit" != "$current_commit" ]; then
-            echo "检测到更新，获取更新内容..."
+            echo "未找到缓存记录，视为需要更新"
             echo "has_updates=true" >> $GITHUB_OUTPUT
             
             # 触发编译工作流
@@ -66,9 +73,6 @@ jobs:
               -H "Authorization: token ${{ secrets.TOKEN }}" \
               -d "{\"event_type\":\"test\"}" \
               || echo "触发编译失败，请检查 TOKEN 权限"
-          else
-            echo "没有检测到新的提交"
-            echo "has_updates=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 清理工作流记录
