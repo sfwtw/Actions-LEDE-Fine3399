@@ -114,12 +114,17 @@ jobs:
         echo "📥 固件说明" >> release.txt
         echo "🔺 此固件为自动编译" >> release.txt
         echo "🔺 发布时间: $(date +"%Y年%m月%d日 %H点%M分")" >> release.txt
-        echo "🔺 提交SHA: ${{ github.event.client_payload.sha }}" >> release.txt
+        echo "🔺 提交变更:" >> release.txt
+        # 处理多个SHA
+        IFS=',' read -ra SHA_ARRAY <<< "${{ github.event.client_payload.sha }}"
+        for sha in "${SHA_ARRAY[@]}"; do
+          echo "  - ${sha:0:7}" >> release.txt
+        done
         echo "🔺 仅供测试使用，风险自负" >> release.txt
         echo "---" >> release.txt
         [ ${UPLOAD_GOFILE:-false} = true ] && [ -n "${{ steps.gofile.outputs.url }}" ] && echo "🔗 [GoFile下载](${{ steps.gofile.outputs.url }})" >> release.txt
         if [ -n "${{ github.event.client_payload.commit_msg }}" ]; then
-          echo "Debug - Commit message:"
+          echo "最新提交记录：" >> release.txt
           echo "${{ github.event.client_payload.commit_msg }}" >> release.txt
         fi 
         echo "Debug - Final release.txt content:"

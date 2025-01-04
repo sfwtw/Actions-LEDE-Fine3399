@@ -38,20 +38,22 @@ jobs:
           mkdir -p workspace
           cd workspace
           git clone --depth 100 $REPO_URL -b $REPO_BRANCH . || exit 1
-          if [ -f ../.commitHash ]; then
-            current_hash=$(cat ../.commitHash)
-          else
-            current_hash=$(git rev-parse HEAD)
-          fi
+          current_hash=$(git rev-parse HEAD)
           echo "commitHash=$current_hash" >> $GITHUB_OUTPUT
-                    
+          
           if [ ! -z "${{ steps.getLastHash.outputs.lastHash }}" ]; then
             echo "最新提交变更:" > ../commit_msg.txt
             echo "-------------------" >> ../commit_msg.txt
-            git log --pretty=format:'%h - %s' ${{ steps.getLastHash.outputs.lastHash }}..$current_hash | 
-            awk '{print "["NR"] "$0"\n"}' >> ../commit_msg.txt
-            echo "-------------------" >> ../commit_msg.txt
-            echo "commitTitle=$(cat ../commit_msg.txt)" >> $GITHUB_OUTPUT
+            git log --pretty=format:'- %h: %s' ${{ steps.getLastHash.outputs.lastHash }}..$current_hash >> ../commit_msg.txt
+            echo -e "\n-------------------" >> ../commit_msg.txt
+            
+            # 获取所有新提交的完整 SHA 值
+            all_shas=$(git log --format='%H' ${{ steps.getLastHash.outputs.lastHash }}..$current_hash | tr '\n' ',' | sed 's/,$//')
+            echo "allShas=$all_shas" >> $GITHUB_OUTPUT
+            
+            # 处理提交信息
+            commit_msg=$(cat ../commit_msg.txt | tr '\n' ' ' | sed 's/"/\\"/g')
+            echo "commitTitle=$commit_msg" >> $GITHUB_OUTPUT
           fi
 
       - name: 比对提交哈希值
@@ -78,7 +80,7 @@ jobs:
           client-payload: |
             {
               "ref": "${{ github.ref }}",
-              "sha": "${{ steps.getHash.outputs.commitHash }}",
+              "sha": "${{ steps.getHash.outputs.allShas }}",
               "commit_msg": "${{ steps.getHash.outputs.commitTitle }}"
             }
 
