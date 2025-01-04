@@ -71,7 +71,7 @@ jobs:
         mkdir openwrt/bin/targets
         mkdir openwrt/bin/targets/cs
         mkdir openwrt/bin/targets/cs/cs
-        touch openwrt/bin/targets/cs/cs/README.md
+        echo "test" > openwrt/bin/targets/cs/cs/test.txt
         ln -sf /mnt/workdir/openwrt $GITHUB_WORKSPACE/openwrt
     
 
