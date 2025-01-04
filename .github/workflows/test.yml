@@ -182,6 +182,9 @@ jobs:
       id: release_note
       if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.organize.outputs.status == 'success'
       run: |
+        REPO_OWNER=$(echo $REPO_URL | cut -d'/' -f4)
+        REPO_NAME=$(echo $REPO_URL | cut -d'/' -f5 | cut -d'.' -f1)
+        
         {
           echo "## 📥 OpenWrt 固件发布"
           echo ""
@@ -204,7 +207,8 @@ jobs:
                   if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
                     if [ ! -z "$short_hash" ]; then
                       commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
-                      echo "  - [\`$short_hash\`] $subject ($author - $commit_date)"
+                      # 添加完整commit链接和悬停提示
+                      echo "  - [<code title=\"完整Hash: ${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject} ($author - $commit_date)"
                     fi
                   fi
                 fi
