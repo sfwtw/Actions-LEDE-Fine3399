@@ -32,7 +32,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
     - name: 准备工作环境
       uses: actions/checkout@main
