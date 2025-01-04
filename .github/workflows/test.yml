@@ -31,6 +31,9 @@ env:
   TZ: Asia/Shanghai
   RELEASE_TAG: 'OpenWrt-Releases'  # 添加固定tag名称
   CACHE_VERSION: "v1"  # 用于缓存版本控制
+  RELEASE_TAG_1: 'OpenWrt_001'  # 添加三个固定tag名称
+  RELEASE_TAG_2: 'OpenWrt_002'
+  RELEASE_TAG_3: 'OpenWrt_003'
  
 jobs:
   build:
@@ -178,6 +181,20 @@ jobs:
         echo "FIRMWARE_NAME=$FIRMWARE_NAME" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
+    - name: 更新发布标签
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.organize.outputs.status == 'success'
+      run: |
+        # 移动旧的发布标签
+        if gh release view ${{ env.RELEASE_TAG_2 }} &>/dev/null; then
+          gh release delete ${{ env.RELEASE_TAG_3 }} -y || true
+          gh release edit ${{ env.RELEASE_TAG_2 }} --tag ${{ env.RELEASE_TAG_3 }}
+        fi
+        if gh release view ${{ env.RELEASE_TAG_1 }} &>/dev/null; then
+          gh release edit ${{ env.RELEASE_TAG_1 }} --tag ${{ env.RELEASE_TAG_2 }}
+        fi
+      env:
+        GH_TOKEN: ${{ secrets.TOKEN }}
+
     - name: 生成发布说明
       id: release_note
       if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.organize.outputs.status == 'success'
@@ -186,40 +203,42 @@ jobs:
         REPO_NAME=$(echo $REPO_URL | cut -d'/' -f5 | cut -d'.' -f1)
         
         {
-          echo "## 📥 OpenWrt 固件发布"
+          echo "## 📥 OpenWrt 固件发布 (最新版本)"
           echo ""
           echo "### 🔸 编译信息"
+          echo "- 发布版本：OpenWrt_001 (最新)"
           echo "- 编译类型：${BUILD_TYPE}"
           echo "- 编译时间：$(date +"%Y年%m月%d日 %H:%M")"
           echo "- 固件文件：${FIRMWARE_NAME}.zip"
           echo ""
-          echo "### 🔸 更新记录"
+          echo "### 🔸 历史版本"
+          echo "- OpenWrt_002 (上一版本)"
+          echo "- OpenWrt_003 (最早版本)"
+          echo ""
+          echo "### 🔸 更新内容"
           
-          for i in {1..3}; do
-            if [ -f ".cache/updates_${i}.txt" ]; then
-              echo "#### 构建 $i"
-              while IFS= read -r line; do
-                if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
-                  echo "- $line"
-                elif [[ $line == "更新内容:" ]]; then
-                  echo "- 更新内容："
-                else
-                  if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
-                    if [ ! -z "$short_hash" ]; then
-                      commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
-                      # 添加完整commit链接和悬停提示
-                      echo "  - [<code title=\"完整Hash: ${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject} ($author - $commit_date)"
-                    fi
+          if [ -f ".cache/updates_1.txt" ]; then
+            while IFS= read -r line; do
+              if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                echo "- $line"
+              elif [[ $line == "更新内容:" ]]; then
+                echo "- 更新内容："
+              else
+                if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
+                  if [ ! -z "$short_hash" ]; then
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    echo "  - [<code title=\"完整Hash: ${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject} ($author - $commit_date)"
                   fi
                 fi
-              done < ".cache/updates_${i}.txt"
-              echo ""
-            fi
-          done
+              fi
+            done < ".cache/updates_1.txt"
+          fi
           
+          echo ""
           echo "### 📝 注意事项"
           echo "- 此版本仅供测试使用，风险自负"
-          echo "- 保留最近3次构建记录"
+          echo "- 保留最近3个版本，按001/002/003编号"
+          echo "- 新版本发布时，旧版本会自动后移"
         } > release.txt
 
     - name: 发布固件
@@ -227,7 +246,7 @@ jobs:
       if: steps.release_note.outputs.status != 'failed' && !cancelled()
       with:
         token: ${{ secrets.TOKEN }}
-        tag: ${{ env.RELEASE_TAG }}
+        tag: ${{ env.RELEASE_TAG_1 }}
         bodyFile: release.txt
         artifacts: "${{ env.FIRMWARE }}/${{ env.FIRMWARE_NAME }}.zip"
         allowUpdates: true
@@ -239,13 +258,3 @@ jobs:
       with:
         retain_days: 0
         keep_minimum_runs: 2
-
-    - name: 清理旧固件文件
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        keep_latest: 3
-        delete_tags: false
-        delete_tag_pattern: ^(?!OpenWrt-Releases).*$
-      env:
-        GITHUB_TOKEN: ${{ secrets.TOKEN }}
