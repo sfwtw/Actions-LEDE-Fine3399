@@ -39,6 +39,18 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: 缓存提交信息
+      uses: actions/cache@v3
+      with:
+        path: |
+          .cache/last_commit.txt
+          .cache/commit_log.txt
+          .cache/commit_details.txt
+        key: commit-cache-${{ github.sha }}-${{ steps.check_update.outputs.commit_count }}
+        restore-keys: |
+          commit-cache-${{ github.sha }}-
+          commit-cache-
+
     - name: 检查更新状态
       id: check_update
       run: |
@@ -80,18 +92,6 @@ jobs:
           echo "commit_count=0" >> $GITHUB_OUTPUT
         fi
 
-    - name: 缓存提交信息
-      uses: actions/cache@v3
-      with:
-        path: |
-          .cache/last_commit.txt
-          .cache/commit_log.txt
-          .cache/commit_details.txt
-        key: commit-cache-${{ github.sha }}-${{ steps.check_update.outputs.commit_count }}
-        restore-keys: |
-          commit-cache-${{ github.sha }}-
-          commit-cache-
-
     - name: 初始化编译环境
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -126,7 +126,7 @@ jobs:
         mkdir openwrt/bin/targets
         mkdir openwrt/bin/targets/cs
         mkdir openwrt/bin/targets/cs/cs
-        echo "${{ github.event.client_payload.commit_msg }}" >> openwrt/bin/targets/cs/cs/test.txt
+        echo "test" >> openwrt/bin/targets/cs/cs/test.txt
         ln -sf /mnt/workdir/openwrt $GITHUB_WORKSPACE/openwrt
     
 
