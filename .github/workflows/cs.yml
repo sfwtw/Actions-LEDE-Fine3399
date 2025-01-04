@@ -1,4 +1,4 @@
-name: Update Checker
+name: cs Update Checker
 
 env:
   REPO_URL: https://github.com/sfwtw/Actions-LEDE-Fine3399
