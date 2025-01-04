@@ -4,7 +4,7 @@ env:
   REPO_URL: https://github.com/sfwtw/Actions-LEDE-Fine3399
   REPO_BRANCH: main
   TZ: Asia/Shanghai
-  CACHE_VERSION: "v1"  # 添加缓存版本控制
+  CACHE_VERSION: "v1"
 
 on:
   workflow_dispatch:
@@ -28,6 +28,8 @@ jobs:
         with:
           path: |
             .cache/updates_1.txt
+            .cache/updates_2.txt
+            .cache/updates_3.txt
             .cache/last_commit.txt
           key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.sha }}
           restore-keys: |
@@ -44,27 +46,20 @@ jobs:
           current_commit=$(git rev-parse HEAD)
           echo "当前最新提交: ${current_commit}"
           
-          # 读取缓存中的最后提交记录
           if [ -f ../.cache/last_commit.txt ]; then
-            cached_commit=$(cat ../.cache/last_commit.txt)
-            echo "缓存的最后提交: ${cached_commit}"
-            
-            if [ "$cached_commit" != "$current_commit" ]; then
-              echo "检测到新更新，触发编译流程..."
-              echo "has_updates=true" >> $GITHUB_OUTPUT
-              
-              # 触发编译工作流，使用 auto 类型
-              curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
-                -H "Accept: application/vnd.github.v3+json" \
-                -H "Authorization: token ${{ secrets.TOKEN }}" \
-                -d "{\"event_type\":\"test\", \"client_payload\":{\"build_type\":\"auto\"}}" \
-                || echo "触发编译失败，请检查 TOKEN 权限"
-            else
-              echo "当前已是最新版本"
-              echo "has_updates=false" >> $GITHUB_OUTPUT
-            fi
+            last_commit=$(cat ../.cache/last_commit.txt)
+            echo "上次检查的提交: ${last_commit}"
           else
-            echo "未找到缓存记录，视为需要更新"
+            last_commit=$(git rev-parse HEAD^)
+            echo "首次运行，记录当前提交"
+            echo "${current_commit}" > ../.cache/last_commit.txt
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          if [ "$last_commit" != "$current_commit" ]; then
+            echo "检测到新更新"
+            echo "${current_commit}" > ../.cache/last_commit.txt
             echo "has_updates=true" >> $GITHUB_OUTPUT
             
             # 触发编译工作流
@@ -73,6 +68,9 @@ jobs:
               -H "Authorization: token ${{ secrets.TOKEN }}" \
               -d "{\"event_type\":\"test\"}" \
               || echo "触发编译失败，请检查 TOKEN 权限"
+          else
+            echo "当前已是最新版本"
+            echo "has_updates=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 清理工作流记录
