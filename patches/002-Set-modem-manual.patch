@@ -9,9 +9,3 @@ index 1234567..89abcde 100644
         option enable_dial '1'
         option modem_number '0'
         option network_interface_alias '1'
-diff --git a/package/luci-app-modem/root/etc/hotplug.d b/package/luci-app-modem/root/etc/hotplug.d
-deleted file mode 160000
---- a/package/luci-app-modem/root/etc/hotplug.d
-+++ /dev/null
-@@ -1 +0,0 @@
--Subproject commit 0000000000000000000000000000000000000000

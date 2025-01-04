@@ -21,6 +21,7 @@ function git_sparse_clone() {
 }
 
 git_sparse_clone main https://github.com/Siriling/5G-Modem-Support luci-app-modem
+rm -rf package/luci-app-modem/root/etc/hotplug.d
 # Modify default IP
 #sed -i 's/192.168.1.1/192.168.50.5/g' package/base-files/files/bin/config_generate
 
