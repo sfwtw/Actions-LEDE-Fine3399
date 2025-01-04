@@ -75,10 +75,13 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.TOKEN }}
+          repository: ${{ github.repository }}
           event-type: test
           client-payload: |
             {
-              "commit_title": "${{ steps.getHash.outputs.commitTitle }}"
+              "ref": "${{ github.ref }}",
+              "sha": "${{ github.sha }}",
+              "commit_msg": "${{ steps.getHash.outputs.commitTitle }}"
             }
 
       - name: 清理旧的工作流记录
