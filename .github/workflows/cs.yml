@@ -38,7 +38,11 @@ jobs:
           mkdir -p workspace
           cd workspace
           git clone --depth 100 $REPO_URL -b $REPO_BRANCH . || exit 1
-          current_hash=$(git rev-parse HEAD)
+          if [ -f ../.commitHash ]; then
+            current_hash=$(cat ../.commitHash)
+          else
+            current_hash=$(git rev-parse HEAD)
+          fi
           echo "commitHash=$current_hash" >> $GITHUB_OUTPUT
                     
           if [ ! -z "${{ steps.getLastHash.outputs.lastHash }}" ]; then
@@ -48,12 +52,6 @@ jobs:
             awk '{print "["NR"] "$0"\n"}' >> ../commit_msg.txt
             echo "-------------------" >> ../commit_msg.txt
             echo "commitTitle=$(cat ../commit_msg.txt)" >> $GITHUB_OUTPUT
-            
-            # 添加调试输出
-            echo "Debug - commit_msg.txt content:"
-            cat ../commit_msg.txt
-            echo "Debug - base64 encoded commitTitle:"
-            echo "$(cat ../commit_msg.txt | base64 -w 0)"
           fi
 
       - name: 比对提交哈希值
@@ -80,7 +78,7 @@ jobs:
           client-payload: |
             {
               "ref": "${{ github.ref }}",
-              "sha": "${{ github.sha }}",
+              "sha": "${{ steps.getHash.outputs.commitHash }}",
               "commit_msg": "${{ steps.getHash.outputs.commitTitle }}"
             }
 
