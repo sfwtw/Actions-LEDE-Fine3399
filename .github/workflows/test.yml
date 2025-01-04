@@ -111,8 +111,13 @@ jobs:
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         touch release.txt
-        [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
-        if [ ${{ github.event.client_payload.commit_title }} ] ; then
+        echo "📥 固件说明" >> release.txt
+        echo "🔺 此固件为自动编译" >> release.txt
+        echo "🔺 发布时间: $(date +"%Y年%m月%d日 %H点%M分")" >> release.txt
+        echo "🔺 仅供测试使用，风险自负" >> release.txt
+        echo "---" >> release.txt
+        [ ${UPLOAD_GOFILE:-false} = true ] && [ -n "${{ steps.gofile.outputs.url }}" ] && echo "🔗 [GoFile下载](${{ steps.gofile.outputs.url }})" >> release.txt
+        if [ -n "${{ github.event.client_payload.commit_title }}" ]; then
           echo "${{ github.event.client_payload.commit_title }}" | base64 -d >> release.txt
         fi 
         echo "status=success" >> $GITHUB_OUTPUT
