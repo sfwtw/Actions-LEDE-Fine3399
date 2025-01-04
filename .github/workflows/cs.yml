@@ -17,24 +17,50 @@ jobs:
       has_updates: ${{ steps.check_updates.outputs.has_updates }}
     
     steps:
+      - name: 准备工作目录
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: 缓存提交信息
+        uses: actions/cache@v3
+        with:
+          path: |
+            .cache/last_commit.txt
+            .cache/commit_log.txt
+            .cache/commit_details.txt
+            .cache/trigger_source.txt
+          key: commit-cache-${{ github.sha }}-${{ steps.check_updates.outputs.commit_count }}
+          restore-keys: |
+            commit-cache-${{ github.sha }}-
+            commit-cache-
+
       - name: 检查更新
         id: check_updates
         run: |
-          set -e
+          mkdir -p .cache
+          
           echo "::group::克隆仓库"
-          git clone --depth 1 $REPO_URL -b $REPO_BRANCH temp
+          git clone --depth 100 $REPO_URL -b $REPO_BRANCH temp
           cd temp
           
-          # 获取最新提交信息
-          LATEST_COMMIT=$(git rev-parse HEAD)
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          current_commit=$(git rev-parse HEAD)
+          echo "当前最新提交: ${current_commit}"
           
-          echo "最新提交: ${LATEST_COMMIT}"
-          echo "提交信息: ${COMMIT_MSG}"
+          if [ -f ../.cache/last_commit.txt ]; then
+            last_commit=$(cat ../.cache/last_commit.txt)
+            echo "上次构建的提交: ${last_commit}"
+          else
+            last_commit=$(git rev-parse HEAD^)
+            echo "首次运行，使用上一次提交: ${last_commit}"
+          fi
           echo "::endgroup::"
           
-          if [ -n "$(git log -1)" ]; then
-            echo "检测到更新，触发编译..."
+          if [ "$last_commit" != "$current_commit" ]; then
+            echo "检测到更新，获取更新内容..."
+            # 标记触发来源为cs检查器
+            echo "cs_checker" > ../.cache/trigger_source.txt
+            echo "${current_commit}" > ../.cache/last_commit.txt
             echo "has_updates=true" >> $GITHUB_OUTPUT
             
             # 触发编译工作流
@@ -44,7 +70,7 @@ jobs:
               -d "{\"event_type\":\"test\"}" \
               || echo "触发编译失败，请检查 TOKEN 权限"
           else
-            echo "没有检测到更新"
+            echo "没有检测到新的提交"
             echo "has_updates=false" >> $GITHUB_OUTPUT
           fi
 
