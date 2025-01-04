@@ -47,30 +47,35 @@ jobs:
         git clone --depth 100 $REPO_URL -b $REPO_BRANCH repo
         cd repo
         
+        current_commit=$(git rev-parse HEAD)
+        echo "当前最新提交: ${current_commit}"
+        
         # 获取缓存的提交记录
         if [ -f ../.cache/last_commit.txt ]; then
           last_commit=$(cat ../.cache/last_commit.txt)
           echo "上次构建的提交: ${last_commit}"
         else
-          echo "首次运行，未找到历史记录"
-          last_commit=""
+          # 首次运行，获取最近一次提交的父提交
+          last_commit=$(git rev-parse HEAD^)
+          echo "首次运行，使用上一次提交: ${last_commit}"
+          echo "${last_commit}" > ../.cache/last_commit.txt
         fi
-        
-        current_commit=$(git rev-parse HEAD)
-        echo "当前最新提交: ${current_commit}"
         echo "::endgroup::"
         
-        if [ "$last_commit" != "$current_commit" ] && [ -n "$last_commit" ]; then
+        # 确保有变更时才保存日志
+        if [ "$last_commit" != "$current_commit" ]; then
           echo "::group::获取更新信息"
           # 保存提交日志
           git log --pretty=format:'%h: %s' $last_commit..$current_commit > ../.cache/commit_log.txt
           # 保存完整提交信息
           git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit > ../.cache/commit_details.txt
+          # 更新最后提交记录
+          echo "${current_commit}" > ../.cache/last_commit.txt
           echo "has_updates=true" >> $GITHUB_OUTPUT
           echo "commit_count=$(git rev-list --count $last_commit..$current_commit)" >> $GITHUB_OUTPUT
           echo "::endgroup::"
         else
-          echo $current_commit > ../.cache/last_commit.txt
+          echo "没有检测到新的提交"
           echo "has_updates=false" >> $GITHUB_OUTPUT
           echo "commit_count=0" >> $GITHUB_OUTPUT
         fi
