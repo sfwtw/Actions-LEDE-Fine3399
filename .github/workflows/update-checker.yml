@@ -42,13 +42,12 @@ jobs:
           echo "commitHash=$current_hash" >> $GITHUB_OUTPUT
           
           if [ ! -z "${{ steps.getLastHash.outputs.lastHash }}" ]; then
-            echo "commitTitle<<EOF" >> $GITHUB_OUTPUT
-            echo "最新提交变更:" >> $GITHUB_OUTPUT
-            echo "-------------------" >> $GITHUB_OUTPUT
+            echo "最新提交变更:" > ../commit_msg.txt
+            echo "-------------------" >> ../commit_msg.txt
             git log --pretty=format:'%h - %s' ${{ steps.getLastHash.outputs.lastHash }}..$current_hash | 
-            awk '{print "["NR"] "$0"\n"}' >> $GITHUB_OUTPUT
-            echo "-------------------" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            awk '{print "["NR"] "$0"\n"}' >> ../commit_msg.txt
+            echo "-------------------" >> ../commit_msg.txt
+            echo "commitTitle=$(cat ../commit_msg.txt | base64 -w 0)" >> $GITHUB_OUTPUT
           fi
 
       - name: 比对提交哈希值
@@ -71,7 +70,10 @@ jobs:
         with:
           token: ${{ secrets.TOKEN }}
           event-type: Source-Code-Update
-          client-payload: '{"commit_title": "${{ steps.getHash.outputs.commitTitle }}"}'
+          client-payload: |
+            {
+              "commit_title": "${{ steps.getHash.outputs.commitTitle }}"
+            }
 
       - name: 清理旧的工作流记录
         uses: Mattraks/delete-workflow-runs@v2

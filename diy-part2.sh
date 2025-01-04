@@ -19,10 +19,11 @@ function git_sparse_clone() {
   mv -f $@ ../package
   cd .. && rm -rf $repodir
 }
-
+#Add luci-app-modem and fix qmodem support
 git_sparse_clone main https://github.com/Siriling/5G-Modem-Support luci-app-modem
 rm -rf package/luci-app-modem/root/etc/hotplug.d
-# Modify default IP
+echo -e "config global 'global'\n\toption enable_dial '1'\n\toption modem_number '0'\n\toption manual_configuration '0'\n\toption network_interface_alias '1'" > package/luci-app-modem/root/etc/config/modem
+
 #sed -i 's/192.168.1.1/192.168.50.5/g' package/base-files/files/bin/config_generate
 
 # Modify default theme

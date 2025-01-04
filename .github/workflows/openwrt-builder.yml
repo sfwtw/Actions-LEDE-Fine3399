@@ -178,7 +178,7 @@ jobs:
         touch release.txt
         [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
         if [ ${{ github.event.client_payload.commit_title }} ] ; then
-          echo "${{ github.event.client_payload.commit_title }}" >> release.txt
+          echo "${{ github.event.client_payload.commit_title }}" | base64 -d >> release.txt
 
         fi 
         echo "status=success" >> $GITHUB_OUTPUT
