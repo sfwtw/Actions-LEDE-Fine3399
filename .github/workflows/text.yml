@@ -36,8 +36,6 @@ jobs:
     steps:
     - name: 准备完成
       uses: actions/checkout@main
-      with:
-        fetch-depth: 0
 
     - name: 初始化编译环境
       env:
@@ -82,66 +80,14 @@ jobs:
       working-directory: /mnt/workdir
       run: |
         df -hT $PWD
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        mkdir openwrt
+        mkdir openwrt/bin
+        mkdir openwrt/bin/targets
+        mkdir openwrt/bin/targets/cs
+        touch openwrt/bin/targets/cs/README.md
         ln -sf /mnt/workdir/openwrt $GITHUB_WORKSPACE/openwrt
     
-    - name: 缓存构建动作
-      uses: klever1988/cachewrtbuild@main
-      with:
-        ccache: 'true'
-        mixkey: ubuntu-22.04-fine3399-lede
-        prefix: ${{ github.workspace }}/openwrt
 
-    - name: 加载自定义 feeds
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
-
-    - name: 更新 feeds
-      run: cd openwrt && ./scripts/feeds update -a
-
-    - name: 安装 feeds
-      run: cd openwrt && ./scripts/feeds install -a
-
-    - name: 加载自定义配置
-      run: |
-        [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
-
-    - name: 加载补丁
-      run: |
-        if [ -d patches ]; then
-          echo "发现补丁目录，开始应用补丁..."
-          cd openwrt
-          git apply --reject --whitespace=fix $GITHUB_WORKSPACE/patches/*.patch
-        else
-          echo "未发现补丁目录，跳过补丁应用步骤"
-        fi
-
-    - name: 下载软件包
-      id: package
-      run: |
-        cd openwrt
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
-
-    - name: 编译固件
-      id: compile
-      run: |
-        cd openwrt
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
-        echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
     - name: 检查磁盘空间
       if: (!cancelled())
@@ -181,7 +127,6 @@ jobs:
         [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
         if [ ${{ github.event.client_payload.commit_title }} ] ; then
           echo "${{ github.event.client_payload.commit_title }}" | base64 -d >> release.txt
-
         fi 
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -205,7 +150,7 @@ jobs:
       uses: dev-drprasad/delete-older-releases@master
       if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.tag.outputs.status == 'success'
       with:
-        keep_latest: 3
+        keep_latest: 2
         delete_tags: true
       env:
         GITHUB_TOKEN: ${{ secrets.TOKEN }}
