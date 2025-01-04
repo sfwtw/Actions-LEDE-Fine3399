@@ -48,6 +48,7 @@ jobs:
             awk '{print "["NR"] "$0"\n"}' >> ../commit_msg.txt
             echo "-------------------" >> ../commit_msg.txt
             echo "commitTitle=$(cat ../commit_msg.txt | base64 -w 0)" >> $GITHUB_OUTPUT
+            echo $GITHUB_OUTPUT
           fi
 
       - name: 比对提交哈希值
