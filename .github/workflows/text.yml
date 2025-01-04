@@ -14,7 +14,7 @@ name: test OpenWrt Builder
 
 on:
   repository_dispatch:
-    types: [Source-Code-Update]
+    types: [test]
   workflow_dispatch:
 
 env:

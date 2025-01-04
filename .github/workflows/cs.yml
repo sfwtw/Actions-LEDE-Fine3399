@@ -69,7 +69,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.TOKEN }}
-          event-type: Source-Code-Update
+          event-type: test
           client-payload: |
             {
               "commit_title": "${{ steps.getHash.outputs.commitTitle }}"
