@@ -27,7 +27,16 @@ env:
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
+  BUILD_TYPE: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}  # 改用英文
   TZ: Asia/Shanghai
+  RELEASE_TAG: 'Lede-Releases'  # 添加固定tag名称
+  CACHE_VERSION: "lede"  # 用于缓存版本控制
+  FIRMWARE_PREFIX: 'lede'  # 固件前缀
+  # 添加固定序号变量
+  VERSION_LATEST: '001'
+  VERSION_PREVIOUS: '002' 
+  VERSION_OLDEST: '003'
+  ARTIFACT_DIR: './firmware_archives'
 
 jobs:
   build:
@@ -137,17 +146,96 @@ jobs:
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
+        make -j$(nproc) || {
+          echo "多线程编译失败，尝试单线程编译"
+          make -j1 V=s || {
+            echo "编译失败"
+            exit 1
+          }
+        }
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    # 添加构建状态检查
+    - name: 检查构建状态
+      if: steps.compile.outputs.status != 'success'
+      run: |
+        echo "构建失败，请检查日志"
+        exit 1
 
     - name: 检查磁盘空间
       if: (!cancelled())
       run: |
         df -hT
         df -hT $PWD
+    
+    - name: 缓存提交信息
+      uses: actions/cache@v3
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      with:
+        path: |
+          .cache/updates_1.txt
+          .cache/updates_2.txt
+          .cache/updates_3.txt
+          .cache/last_commit.txt
+        key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.run_id }}
+        restore-keys: |
+          commit-cache-${{ env.CACHE_VERSION }}-
+
+    - name: 检查更新状态
+      id: check_update
+      run: |
+        mkdir -p .cache
+        echo "::group::克隆代码仓库"
+        git clone --depth 100 $REPO_URL -b $REPO_BRANCH repo
+        cd repo
+        
+        # 获取最新提交
+        git fetch origin $REPO_BRANCH
+        current_commit=$(git rev-parse origin/$REPO_BRANCH)
+        echo "当前最新提交: ${current_commit}"
+        
+        # 读取或初始化上次构建的提交记录
+        if [ -f ../.cache/last_commit.txt ]; then
+          last_commit=$(cat ../.cache/last_commit.txt)
+          echo "上次构建的提交: ${last_commit}"
+          
+          # 检查提交是否相同
+          if [ "$last_commit" = "$current_commit" ]; then
+            echo "没有检测到新的提交"
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+        else
+          echo "首次运行，使用HEAD^作为比较基准"
+          last_commit=$(git rev-parse HEAD^)
+          echo "使用上一次提交: ${last_commit}"
+        fi
+        
+        # 处理更新记录
+        echo "检测到更新，处理更新记录"
+        # 转移历史更新记录
+        if [ -f ../.cache/updates_2.txt ]; then
+          mv ../.cache/updates_2.txt ../.cache/updates_3.txt
+        fi
+        if [ -f ../.cache/updates_1.txt ]; then
+          mv ../.cache/updates_1.txt ../.cache/updates_2.txt
+        fi
+        
+        # 生成新的更新记录
+        {
+          echo "编译时间: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "编译类型: ${BUILD_TYPE}"
+          echo "更新内容:"
+          git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit
+        } > ../.cache/updates_1.txt
+        
+        # 确认更新记录生成后，更新最后构建的提交记录
+        echo "${current_commit}" > ../.cache/last_commit.txt
+        echo "已更新 last_commit 到: ${current_commit}"
+        echo "has_updates=true" >> $GITHUB_OUTPUT
 
     - name: 上传 bin 文件夹
       uses: actions/upload-artifact@main
@@ -156,56 +244,201 @@ jobs:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: openwrt/bin
 
+    - name: 下载已有固件
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        mkdir -p ${{ env.ARTIFACT_DIR }}
+        # 尝试下载现有版本
+        gh release download ${{ env.RELEASE_TAG }} -D ${{ env.ARTIFACT_DIR }} || true
+      env:
+        GH_TOKEN: ${{ secrets.TOKEN }}
+
     - name: 整理固件文件
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled() && steps.compile.outputs.status == 'success'
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
+        set -e  # 添加错误检查
+        
+        # 保存当前路径用于后续操作
+        CURRENT_PATH=$(pwd)
+        
+        # 进入目标目录并记录路径
         cd openwrt/bin/targets/*/*
+        TARGET_PATH=$(pwd)
+        echo "当前工作目录: ${TARGET_PATH}"
         rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        
+        # 创建新版本目录并打包
+        NEW_VERSION="${FIRMWARE_PREFIX}_${VERSION_LATEST}"
+        mkdir -p $NEW_VERSION
+        mv * $NEW_VERSION/ 2>/dev/null || true
+        zip -r "firmware_new.zip" $NEW_VERSION/
+        if [ ! -f "firmware_new.zip" ]; then
+          echo "错误: 打包失败"
+          exit 1
+        fi
+        
+        # 移动到统一目录并处理版本轮转
+        cd $CURRENT_PATH
+        mkdir -p ${{ env.ARTIFACT_DIR }}
+        cd ${{ env.ARTIFACT_DIR }}
+        
+        # 计算现有文件数量并显示
+        echo "更新前的文件列表："
+        ls -lh *.zip || echo "目录为空"
+        
+        # 版本轮转（从最老到最新的顺序处理）
+        echo "开始版本轮转..."
+        
+        # 1. 如果存在 002，将其移动到 003
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
+          echo "移动 002 到 003"
+          mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
+        fi
+        
+        # 2. 如果存在 001，将其移动到 002
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
+          echo "移动 001 到 002"
+          mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+        fi
+        
+        # 3. 放置新版本到 001
+        echo "放置新版本到 001"
+        cp "${TARGET_PATH}/firmware_new.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+        
+        # 显示最终文件列表
+        echo "最终文件列表："
+        ls -lh *.zip || echo "警告: 没有找到任何固件文件"
+        
+        # 添加文件完整性检查
+        for zip_file in ${{ env.ARTIFACT_DIR }}/*.zip; do
+          if [ -f "$zip_file" ]; then
+            if ! unzip -t "$zip_file" >/dev/null 2>&1; then
+              echo "警告: 文件 $zip_file 可能已损坏"
+              rm -f "$zip_file"
+            fi
+          fi
+        done
+
+        echo "FIRMWARE=${{ env.ARTIFACT_DIR }}" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: 上传固件目录
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
-
-    - name: 生成发布标签
-      id: tag
+    - name: 生成发布说明
+      id: release_note
       if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.organize.outputs.status == 'success'
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        touch release.txt
-        [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
-        if [ ${{ github.event.client_payload.commit_title }} ] ; then
-          echo "${{ github.event.client_payload.commit_title }}" | base64 -d >> release.txt
+        REPO_OWNER=$(echo $REPO_URL | cut -d'/' -f4)
+        REPO_NAME=$(echo $REPO_URL | cut -d'/' -f5 | cut -d'.' -f1)
+        
+        {
+          echo "## 📥 OpenWrt 固件发布"
+          echo ""
+          echo "### 🔸 版本信息"
+          echo "- 当前版本：${FIRMWARE_PREFIX}_${VERSION_LATEST} (最新)"
+          if [ -f "${{ env.ARTIFACT_DIR }}/${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
+            echo "- 历史版本：${FIRMWARE_PREFIX}_${VERSION_PREVIOUS} (上一版)"
+          fi
+          if [ -f "${{ env.ARTIFACT_DIR }}/${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip" ]; then
+            echo "           ${FIRMWARE_PREFIX}_${VERSION_OLDEST} (最早版)"
+          fi
+          echo ""
+          echo "### 🔸 编译信息"
+          echo "- 编译类型：${BUILD_TYPE}"
+          echo "- 编译时间：$(date +"%Y年%m月%d日 %H:%M")"
+          echo ""
+          echo "### 🔸 更新记录"
+          
+          # 显示最新版本更新内容
+          if [ -f ".cache/updates_1.txt" ]; then
+            echo "#### ${FIRMWARE_PREFIX}_${VERSION_LATEST} (最新版本)"
+            while IFS= read -r line; do
+              if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                continue
+              elif [[ $line == "更新内容:" ]]; then
+                echo "更新内容："
+              else
+                if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
+                  if [ ! -z "$short_hash" ]; then
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    echo "  - [<code title=\"${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
+                  fi
+                fi
+              fi
+            done < ".cache/updates_1.txt"
+            echo ""
+          fi
+        
+          # 显示上一版本更新内容
+          if [ -f ".cache/updates_2.txt" ]; then
+            echo "#### ${FIRMWARE_PREFIX}_${VERSION_PREVIOUS} (上一版本)"
+            while IFS= read -r line; do
+              if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                continue
+              elif [[ $line == "更新内容:" ]]; then
+                echo "更新内容："
+              else
+                if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
+                  if [ ! -z "$short_hash" ]; then
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    echo "  - [<code title=\"${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
+                  fi
+                fi
+              fi
+            done < ".cache/updates_2.txt"
+            echo ""
+          fi
+          
+          # 显示最早版本更新内容
+          if [ -f ".cache/updates_3.txt" ]; then
+            echo "#### ${FIRMWARE_PREFIX}_${VERSION_OLDEST} (最早版本)"
+            while IFS= read -r line; do
+              if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                continue
+              elif [[ $line == "更新内容:" ]]; then
+                echo "更新内容："
+              else
+                if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
+                  if [ ! -z "$short_hash" ]; then
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    echo "  - [<code title=\"${full_hash}\">${short_hash}\"></code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
+                  fi
+                fi
+              fi
+            done < ".cache/updates_3.txt"
+            echo ""
+          fi
+          
+          echo "### 📝 说明事项"
+          echo "- 此固件仅供测试使用，风险自负"
+          echo "- 固件版本号说明："
+          echo "  * _001：最新编译版本"
+          echo "  * _002：上一次编译版本"
+          echo "  * _003：最早保留版本"
+        } > release.txt
 
-        fi 
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: 自动发布固件到 Releases
-      uses: softprops/action-gh-release@master
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.TOKEN }}
+    - name: 发布固件
+      uses: ncipollo/release-action@main
+      if: steps.release_note.outputs.status != 'failed' && !cancelled()
       with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+        token: ${{ secrets.TOKEN }}
+        tag: ${{ env.RELEASE_TAG }}
+        bodyFile: release.txt
+        artifacts: "${{ env.ARTIFACT_DIR }}/*.zip"
+        allowUpdates: true
+        removeArtifacts: true
+        replacesArtifacts: true
+
+    - name: 发送构建通知
+      if: always()
+      run: |
+        if [ "${{ steps.compile.outputs.status }}" = "success" ]; then
+          echo "✅ 构建成功"
+        else
+          echo "❌ 构建失败"
+        fi
 
     - name: 删除运行记录
       uses: Mattraks/delete-workflow-runs@main
       with:
         retain_days: 0
         keep_minimum_runs: 2
-
-    - name: 删除自动发布的旧固件
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled() && steps.tag.outputs.status == 'success'
-      with:
-        keep_latest: 3
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.TOKEN }}
