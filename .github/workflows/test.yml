@@ -178,36 +178,39 @@ jobs:
         
         # 打包新版本
         zip -r "${NEW_VERSION}.zip" $NEW_VERSION/
+        if [ ! -f "${NEW_VERSION}.zip" ]; then
+          echo "错误: 打包失败"
+          exit 1
+        fi
         
-        # 移动到统一目录
+        # 移动到统一目录并处理版本轮转
         mkdir -p ${{ env.ARTIFACT_DIR }}
-        mv "${NEW_VERSION}.zip" ${{ env.ARTIFACT_DIR }}/
         
-        # 处理版本轮转
+        # 计算已下载的固件数量
         cd ${{ env.ARTIFACT_DIR }}
+        EXISTING_COUNT=$(ls ${FIRMWARE_PREFIX}_*.zip 2>/dev/null | wc -l || echo "0")
+        echo "已下载的固件数量: ${EXISTING_COUNT}"
         
-        # 计算现有文件数量
-        FILE_COUNT=$(ls ${FIRMWARE_PREFIX}_*.zip 2>/dev/null | wc -l || echo "0")
-        echo "当前有 ${FILE_COUNT} 个固件文件"
+        # 将新编译的固件移动到当前目录
+        mv ../../../openwrt/bin/targets/*/*/${NEW_VERSION}.zip ./
         
-        case $FILE_COUNT in
+        # 根据现有文件数量处理版本轮转
+        case $EXISTING_COUNT in
           0)
             echo "首次运行，直接使用新版本"
-            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            # 新版本已经正确命名，无需操作
             ;;
           1)
-            echo "第二次运行，当前版本变为上一版本"
-            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+            echo "第二次运行，处理版本号"
+            # 确保文件存在再移动
+            if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
+              mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+            fi
             mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
             ;;
           2)
-            echo "第三次运行，完成三个版本的建立"
-            mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
-            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
-            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
-            ;;
-          *)
-            echo "正常版本轮转"
+            echo "第三次运行，处理版本号"
+            # 按顺序移动文件
             if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
               mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
             fi
@@ -216,11 +219,19 @@ jobs:
             fi
             mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
             ;;
+          *)
+            echo "正常版本轮转"
+            [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ] && \
+              mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
+            [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ] && \
+              mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            ;;
         esac
         
-        # 列出最终的文件
+        # 列出最终的文件并验证
         echo "最终文件列表："
-        ls -l *.zip
+        ls -lh *.zip || echo "警告: 没有找到任何固件文件"
         
         echo "FIRMWARE=${{ env.ARTIFACT_DIR }}" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
