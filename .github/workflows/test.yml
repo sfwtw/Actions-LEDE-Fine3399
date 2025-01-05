@@ -168,7 +168,13 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
+        # 保存当前路径用于后续操作
+        CURRENT_PATH=$(pwd)
+        
+        # 进入目标目录并记录路径
         cd openwrt/bin/targets/*/*
+        TARGET_PATH=$(pwd)
+        echo "当前工作目录: ${TARGET_PATH}"
         rm -rf packages
         
         # 创建新版本目录
@@ -184,6 +190,7 @@ jobs:
         fi
         
         # 移动到统一目录并处理版本轮转
+        cd $CURRENT_PATH
         mkdir -p ${{ env.ARTIFACT_DIR }}
         
         # 计算已下载的固件数量
@@ -192,13 +199,17 @@ jobs:
         echo "已下载的固件数量: ${EXISTING_COUNT}"
         
         # 将新编译的固件移动到当前目录
-        mv ../../../openwrt/bin/targets/*/*/${NEW_VERSION}.zip ./
+        echo "移动新固件: ${TARGET_PATH}/${NEW_VERSION}.zip"
+        cp "${TARGET_PATH}/${NEW_VERSION}.zip" ./
+        if [ ! -f "${NEW_VERSION}.zip" ]; then
+          echo "错误: 文件移动失败"
+          exit 1
+        fi
         
-        # 根据现有文件数量处理版本轮转
         case $EXISTING_COUNT in
           0)
-            echo "首次运行，直接使用新版本"
-            # 新版本已经正确命名，无需操作
+            echo "首次运行，重命名新版本"
+            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
             ;;
           1)
             echo "第二次运行，处理版本号"
