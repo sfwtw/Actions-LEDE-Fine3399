@@ -67,28 +67,49 @@ jobs:
         git clone --depth 100 $REPO_URL -b $REPO_BRANCH repo
         cd repo
         
-        current_commit=$(git rev-parse HEAD)
+        # 获取最新提交
+        git fetch origin $REPO_BRANCH
+        current_commit=$(git rev-parse origin/$REPO_BRANCH)
         echo "当前最新提交: ${current_commit}"
         
+        # 读取或初始化上次构建的提交记录
         if [ -f ../.cache/last_commit.txt ]; then
           last_commit=$(cat ../.cache/last_commit.txt)
           echo "上次构建的提交: ${last_commit}"
+          
+          # 检查提交是否相同
+          if [ "$last_commit" = "$current_commit" ]; then
+            echo "没有检测到新的提交"
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 验证提交是否存在于历史中
+          if git merge-base --is-ancestor "$last_commit" "$current_commit"; then
+            echo "检测到新的更新"
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "检测到分支重置或强制推送，视为需要更新"
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+          fi
         else
+          echo "首次运行，记录当前提交"
           last_commit=$(git rev-parse HEAD^)
-          echo "首次运行，使用上一次提交: ${last_commit}"
+          echo "使用上一次提交: ${last_commit}"
+          echo "has_updates=true" >> $GITHUB_OUTPUT
         fi
         
-        # 转移历史更新记录
-        if [ -f ../.cache/updates_2.txt ]; then
-          mv ../.cache/updates_2.txt ../.cache/updates_3.txt
-        fi
-        if [ -f ../.cache/updates_1.txt ]; then
-          mv ../.cache/updates_1.txt ../.cache/updates_2.txt
-        fi
-        
-        # 生成新的更新记录
+        # 处理更新记录
         if [ "$last_commit" != "$current_commit" ]; then
-          echo "::group::获取更新信息"
+          # 转移历史更新记录
+          if [ -f ../.cache/updates_2.txt ]; then
+            mv ../.cache/updates_2.txt ../.cache/updates_3.txt
+          fi
+          if [ -f ../.cache/updates_1.txt ]; then
+            mv ../.cache/updates_1.txt ../.cache/updates_2.txt
+          fi
+          
+          # 生成新的更新记录
           {
             echo "编译时间: $(date '+%Y-%m-%d %H:%M:%S')"
             echo "编译类型: ${BUILD_TYPE}"
@@ -96,11 +117,8 @@ jobs:
             git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit
           } > ../.cache/updates_1.txt
           
+          # 更新最后构建的提交记录
           echo "${current_commit}" > ../.cache/last_commit.txt
-          echo "has_updates=true" >> $GITHUB_OUTPUT
-        else
-          echo "没有检测到新的提交"
-          echo "has_updates=false" >> $GITHUB_OUTPUT
         fi
 
     - name: 初始化编译环境
