@@ -271,7 +271,7 @@ jobs:
             done < ".cache/updates_1.txt"
             echo ""
           fi
-          
+        
           # 显示上一版本更新内容
           if [ -f ".cache/updates_2.txt" ]; then
             echo "#### ${FIRMWARE_PREFIX}_${VERSION_PREVIOUS} (上一版本)"
