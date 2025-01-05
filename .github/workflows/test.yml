@@ -250,14 +250,16 @@ jobs:
           echo "- 编译类型：${BUILD_TYPE}"
           echo "- 编译时间：$(date +"%Y年%m月%d日 %H:%M")"
           echo ""
-          echo "### 🔸 更新内容"
+          echo "### 🔸 更新记录"
           
+          # 显示最新版本更新内容
           if [ -f ".cache/updates_1.txt" ]; then
+            echo "#### ${FIRMWARE_PREFIX}_${VERSION_LATEST} (最新版本)"
             while IFS= read -r line; do
               if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
                 continue
               elif [[ $line == "更新内容:" ]]; then
-                echo "本次更新："
+                echo "更新内容："
               else
                 if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
                   if [ ! -z "$short_hash" ]; then
@@ -267,9 +269,49 @@ jobs:
                 fi
               fi
             done < ".cache/updates_1.txt"
+            echo ""
           fi
           
-          echo ""
+          # 显示上一版本更新内容
+          if [ -f ".cache/updates_2.txt" ]; then
+            echo "#### ${FIRMWARE_PREFIX}_${VERSION_PREVIOUS} (上一版本)"
+            while IFS= read -r line; do
+              if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                continue
+              elif [[ $line == "更新内容:" ]]; then
+                echo "更新内容："
+              else
+                if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
+                  if [ ! -z "$short_hash" ]; then
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    echo "  - [<code title=\"${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
+                  fi
+                fi
+              fi
+            done < ".cache/updates_2.txt"
+            echo ""
+          fi
+          
+          # 显示最早版本更新内容
+          if [ -f ".cache/updates_3.txt" ]; then
+            echo "#### ${FIRMWARE_PREFIX}_${VERSION_OLDEST} (最早版本)"
+            while IFS= read -r line; do
+              if [[ $line == "编译时间:"* ]] || [[ $line == "编译类型:"* ]]; then
+                continue
+              elif [[ $line == "更新内容:" ]]; then
+                echo "更新内容："
+              else
+                if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
+                  if [ ! -z "$short_hash" ]; then
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    echo "  - [<code title=\"${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
+                  fi
+                fi
+              fi
+            done < ".cache/updates_3.txt"
+            echo ""
+          fi
+          
           echo "### 📝 说明事项"
           echo "- 此固件仅供测试使用，风险自负"
           echo "- 固件版本号说明："
