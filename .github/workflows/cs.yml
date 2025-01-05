@@ -43,38 +43,43 @@ jobs:
           git clone --depth 100 $REPO_URL -b $REPO_BRANCH temp
           cd temp
           
-          current_commit=$(git rev-parse HEAD)
+          # 获取最新提交
+          git fetch origin $REPO_BRANCH
+          current_commit=$(git rev-parse origin/$REPO_BRANCH)
           echo "当前最新提交: ${current_commit}"
           
+          # 读取上次构建的提交记录(只读取,不更新)
           if [ -f ../.cache/last_commit.txt ]; then
             last_commit=$(cat ../.cache/last_commit.txt)
             echo "上次检查的提交: ${last_commit}"
+            
+            # 只进行检测,不更新 last_commit
+            if [ "$last_commit" = "$current_commit" ]; then
+              echo "没有检测到新的提交"
+              echo "has_updates=false" >> $GITHUB_OUTPUT
+            else
+              echo "检测到新的更新"
+              echo "has_updates=true" >> $GITHUB_OUTPUT
+              
+              # 触发编译工作流
+              curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H "Authorization: token ${{ secrets.TOKEN }}" \
+                -d "{\"event_type\":\"test\"}" \
+                || echo "触发编译失败，请检查 TOKEN 权限"
+            fi
           else
-            last_commit=$(git rev-parse HEAD^)
-            echo "首次运行，记录当前提交"
-            echo "${current_commit}" > ../.cache/last_commit.txt
+            # 首次运行时只读取,不写入
+            echo "首次运行,等待 test 工作流初始化"
             echo "has_updates=false" >> $GITHUB_OUTPUT
-            exit 0
           fi
           
-          if [ "$last_commit" != "$current_commit" ]; then
-            echo "检测到新更新"
-            echo "has_updates=true" >> $GITHUB_OUTPUT
-            
-            # 触发编译工作流
-            curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
-              -H "Accept: application/vnd.github.v3+json" \
-              -H "Authorization: token ${{ secrets.TOKEN }}" \
-              -d "{\"event_type\":\"test\"}" \
-              || echo "触发编译失败，请检查 TOKEN 权限"
-          else
-            echo "当前已是最新版本"
-            echo "has_updates=false" >> $GITHUB_OUTPUT
-          fi
+          # 显示调试信息
+          echo "检测完成,保持 last_commit 不变"
 
       - name: 清理工作流记录
         if: always()
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          retain_days: 1
+          retain_days: 0
           keep_minimum_runs: 3

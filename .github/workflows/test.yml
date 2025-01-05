@@ -83,43 +83,34 @@ jobs:
             echo "has_updates=false" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
-          # 验证提交是否存在于历史中
-          if git merge-base --is-ancestor "$last_commit" "$current_commit"; then
-            echo "检测到新的更新"
-            echo "has_updates=true" >> $GITHUB_OUTPUT
-          else
-            echo "检测到分支重置或强制推送，视为需要更新"
-            echo "has_updates=true" >> $GITHUB_OUTPUT
-          fi
         else
-          echo "首次运行，记录当前提交"
+          echo "首次运行，使用HEAD^作为比较基准"
           last_commit=$(git rev-parse HEAD^)
           echo "使用上一次提交: ${last_commit}"
-          echo "has_updates=true" >> $GITHUB_OUTPUT
         fi
         
         # 处理更新记录
-        if [ "$last_commit" != "$current_commit" ]; then
-          # 转移历史更新记录
-          if [ -f ../.cache/updates_2.txt ]; then
-            mv ../.cache/updates_2.txt ../.cache/updates_3.txt
-          fi
-          if [ -f ../.cache/updates_1.txt ]; then
-            mv ../.cache/updates_1.txt ../.cache/updates_2.txt
-          fi
-          
-          # 生成新的更新记录
-          {
-            echo "编译时间: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "编译类型: ${BUILD_TYPE}"
-            echo "更新内容:"
-            git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit
-          } > ../.cache/updates_1.txt
-          
-          # 更新最后构建的提交记录
-          echo "${current_commit}" > ../.cache/last_commit.txt
+        echo "检测到更新，处理更新记录"
+        # 转移历史更新记录
+        if [ -f ../.cache/updates_2.txt ]; then
+          mv ../.cache/updates_2.txt ../.cache/updates_3.txt
         fi
+        if [ -f ../.cache/updates_1.txt ]; then
+          mv ../.cache/updates_1.txt ../.cache/updates_2.txt
+        fi
+        
+        # 生成新的更新记录
+        {
+          echo "编译时间: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "编译类型: ${BUILD_TYPE}"
+          echo "更新内容:"
+          git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit
+        } > ../.cache/updates_1.txt
+        
+        # 确认更新记录生成后，更新最后构建的提交记录
+        echo "${current_commit}" > ../.cache/last_commit.txt
+        echo "已更新 last_commit 到: ${current_commit}"
+        echo "has_updates=true" >> $GITHUB_OUTPUT
 
     - name: 初始化编译环境
       env:
