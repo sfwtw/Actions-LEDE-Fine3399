@@ -185,15 +185,42 @@ jobs:
         
         # 处理版本轮转
         cd ${{ env.ARTIFACT_DIR }}
-        if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
-          mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
-        fi
-        if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
-          mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
-        fi
         
-        # 移动新版本到001位置
-        mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+        # 计算现有文件数量
+        FILE_COUNT=$(ls ${FIRMWARE_PREFIX}_*.zip 2>/dev/null | wc -l || echo "0")
+        echo "当前有 ${FILE_COUNT} 个固件文件"
+        
+        case $FILE_COUNT in
+          0)
+            echo "首次运行，直接使用新版本"
+            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            ;;
+          1)
+            echo "第二次运行，当前版本变为上一版本"
+            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            ;;
+          2)
+            echo "第三次运行，完成三个版本的建立"
+            mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
+            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            ;;
+          *)
+            echo "正常版本轮转"
+            if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
+              mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
+            fi
+            if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
+              mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+            fi
+            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            ;;
+        esac
+        
+        # 列出最终的文件
+        echo "最终文件列表："
+        ls -l *.zip
         
         echo "FIRMWARE=${{ env.ARTIFACT_DIR }}" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
