@@ -177,14 +177,12 @@ jobs:
         echo "当前工作目录: ${TARGET_PATH}"
         rm -rf packages
         
-        # 创建新版本目录
+        # 创建新版本目录并打包
         NEW_VERSION="${FIRMWARE_PREFIX}_${VERSION_LATEST}"
         mkdir -p $NEW_VERSION
         mv * $NEW_VERSION/ 2>/dev/null || true
-        
-        # 打包新版本
-        zip -r "${NEW_VERSION}.zip" $NEW_VERSION/
-        if [ ! -f "${NEW_VERSION}.zip" ]; then
+        zip -r "firmware_new.zip" $NEW_VERSION/
+        if [ ! -f "firmware_new.zip" ]; then
           echo "错误: 打包失败"
           exit 1
         fi
@@ -198,45 +196,28 @@ jobs:
         EXISTING_COUNT=$(ls ${FIRMWARE_PREFIX}_*.zip 2>/dev/null | wc -l || echo "0")
         echo "已下载的固件数量: ${EXISTING_COUNT}"
         
-        # 将新编译的固件移动到当前目录
-        echo "移动新固件: ${TARGET_PATH}/${NEW_VERSION}.zip"
-        cp "${TARGET_PATH}/${NEW_VERSION}.zip" ./
-        if [ ! -f "${NEW_VERSION}.zip" ]; then
+        # 移动新编译的固件到当前目录
+        echo "移动新固件: ${TARGET_PATH}/firmware_new.zip"
+        cp "${TARGET_PATH}/firmware_new.zip" "./${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+        if [ ! -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
           echo "错误: 文件移动失败"
           exit 1
         fi
         
+        # 根据现有文件数量处理版本轮转
         case $EXISTING_COUNT in
           0)
-            echo "首次运行，重命名新版本"
-            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            echo "首次运行，无需额外处理"
             ;;
           1)
             echo "第二次运行，处理版本号"
-            # 确保文件存在再移动
-            if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
-              mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
-            fi
-            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip.1" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" || true
             ;;
-          2)
-            echo "第三次运行，处理版本号"
-            # 按顺序移动文件
-            if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
-              mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
-            fi
-            if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
-              mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
-            fi
-            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
-            ;;
-          *)
-            echo "正常版本轮转"
+          2|*)
+            echo "第三次及之后运行，处理版本号"
             [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ] && \
               mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
-            [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ] && \
-              mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
-            mv "${NEW_VERSION}.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip.1" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" || true
             ;;
         esac
         
