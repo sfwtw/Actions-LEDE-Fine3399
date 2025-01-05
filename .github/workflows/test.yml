@@ -55,7 +55,7 @@ jobs:
           .cache/updates_2.txt
           .cache/updates_3.txt
           .cache/last_commit.txt
-        key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.sha }}
+        key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.run_id }}
         restore-keys: |
           commit-cache-${{ env.CACHE_VERSION }}-
 
@@ -199,36 +199,26 @@ jobs:
         # 移动到统一目录并处理版本轮转
         cd $CURRENT_PATH
         mkdir -p ${{ env.ARTIFACT_DIR }}
-        
-        # 计算已下载的固件数量
         cd ${{ env.ARTIFACT_DIR }}
-        EXISTING_COUNT=$(ls ${FIRMWARE_PREFIX}_*.zip 2>/dev/null | wc -l || echo "0")
-        echo "已下载的固件数量: ${EXISTING_COUNT}"
         
-        # 移动新编译的固件到当前目录
-        echo "移动新固件: ${TARGET_PATH}/firmware_new.zip"
-        cp "${TARGET_PATH}/firmware_new.zip" "./${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
-        if [ ! -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
-          echo "错误: 文件移动失败"
-          exit 1
+        # 备份现有文件
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
+          echo "备份当前版本"
+          cp "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
         fi
         
-        # 根据现有文件数量处理版本轮转
-        case $EXISTING_COUNT in
-          0)
-            echo "首次运行，无需额外处理"
-            ;;
-          1)
-            echo "第二次运行，处理版本号"
-            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip.1" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" || true
-            ;;
-          2|*)
-            echo "第三次及之后运行，处理版本号"
-            [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ] && \
-              mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
-            mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip.1" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" || true
-            ;;
-        esac
+        # 移动新编译的固件
+        echo "移动新固件"
+        cp "${TARGET_PATH}/firmware_new.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+        
+        # 如果存在第二个版本，将其移动到第三个版本
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ] && [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
+          echo "移动旧版本"
+          mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
+        fi
+        
+        # 清理临时文件
+        rm -f firmware_new.zip
         
         # 列出最终的文件并验证
         echo "最终文件列表："

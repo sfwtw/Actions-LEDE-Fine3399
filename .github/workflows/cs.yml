@@ -31,7 +31,7 @@ jobs:
             .cache/updates_2.txt
             .cache/updates_3.txt
             .cache/last_commit.txt
-          key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.sha }}
+          key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.run_id }}
           restore-keys: |
             commit-cache-${{ env.CACHE_VERSION }}-
 
