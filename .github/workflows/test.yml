@@ -201,26 +201,30 @@ jobs:
         mkdir -p ${{ env.ARTIFACT_DIR }}
         cd ${{ env.ARTIFACT_DIR }}
         
-        # 备份现有文件
-        if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
-          echo "备份当前版本"
-          cp "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
-        fi
+        # 计算现有文件数量并显示
+        echo "更新前的文件列表："
+        ls -lh *.zip || echo "目录为空"
         
-        # 移动新编译的固件
-        echo "移动新固件"
-        cp "${TARGET_PATH}/firmware_new.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+        # 版本轮转（从最老到最新的顺序处理）
+        echo "开始版本轮转..."
         
-        # 如果存在第二个版本，将其移动到第三个版本
-        if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ] && [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
-          echo "移动旧版本"
+        # 1. 如果存在 002，将其移动到 003
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" ]; then
+          echo "移动 002 到 003"
           mv "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip" "${FIRMWARE_PREFIX}_${VERSION_OLDEST}.zip"
         fi
         
-        # 清理临时文件
-        rm -f firmware_new.zip
+        # 2. 如果存在 001，将其移动到 002
+        if [ -f "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" ]; then
+          echo "移动 001 到 002"
+          mv "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip" "${FIRMWARE_PREFIX}_${VERSION_PREVIOUS}.zip"
+        fi
         
-        # 列出最终的文件并验证
+        # 3. 放置新版本到 001
+        echo "放置新版本到 001"
+        cp "${TARGET_PATH}/firmware_new.zip" "${FIRMWARE_PREFIX}_${VERSION_LATEST}.zip"
+        
+        # 显示最终文件列表
         echo "最终文件列表："
         ls -lh *.zip || echo "警告: 没有找到任何固件文件"
         
