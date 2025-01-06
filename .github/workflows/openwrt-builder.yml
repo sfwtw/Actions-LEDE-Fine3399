@@ -142,9 +142,13 @@ jobs:
         # 转移历史更新记录
         if [ -f ../.cache/updates_2.txt ]; then
           mv ../.cache/updates_2.txt ../.cache/updates_3.txt
+        else
+          echo "未找到 updates_2.txt，跳过移动到 updates_3.txt"
         fi
         if [ -f ../.cache/updates_1.txt ]; then
           mv ../.cache/updates_1.txt ../.cache/updates_2.txt
+        else
+          echo "未找到 updates_1.txt，跳过移动到 updates_2.txt"
         fi
         
         # 生成新的更新记录
