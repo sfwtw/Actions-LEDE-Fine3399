@@ -152,6 +152,9 @@ jobs:
         fi
         
         # 生成新的更新记录
+        if [ ! -d ../.cache ]; then
+          mkdir -p ../.cache
+        fi
         {
           echo "编译时间: $(date '+%Y-%m-%d %H:%M:%S')"
           echo "编译类型: ${BUILD_TYPE}"
@@ -383,7 +386,7 @@ jobs:
               else
                 if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
                   if [ ! -z "$short_hash" ]; then
-                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null or echo "未知时间")
                     echo "  - [<code title=\"${full_hash}\">${short_hash}</code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
                   fi
                 fi
@@ -403,7 +406,7 @@ jobs:
               else
                 if IFS='|' read -r full_hash short_hash subject author timestamp <<< "$line"; then
                   if [ ! -z "$short_hash" ]; then
-                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "未知时间")
+                    commit_date=$(date -d "@$timestamp" "+%Y-%m-%d %H:%M" 2>/dev/null or echo "未知时间")
                     echo "  - [<code title=\"${full_hash}\">${short_hash}\"></code>](https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${full_hash}) ${subject}"
                   fi
                 fi
