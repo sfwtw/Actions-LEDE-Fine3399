@@ -17,3 +17,4 @@
 echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
 echo 'src-git modem https://github.com/FUjr/modem_feeds.git;main' >>feeds.conf.default
+echo 'src-git CONFIG_FEED_modem=y https://github.com/linkease/istore;main' >> feeds.conf.default
