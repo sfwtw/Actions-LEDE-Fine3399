@@ -88,7 +88,6 @@ jobs:
         df -hT $PWD
 
     - name: 克隆源码
-      id: clone
       working-directory: /mnt/workdir
       run: |
         df -hT $PWD
@@ -98,7 +97,7 @@ jobs:
         
     - name: 缓存提交信息
       uses: actions/cache@v3
-      if: steps.clone.outputs.status == 'success' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && !cancelled()
       with:
         path: |
           .cache/updates_1.txt
@@ -234,7 +233,7 @@ jobs:
 
     # 添加构建状态检查
     - name: 检查构建状态
-      if: steps.compile.outputs.status != 'success'
+      if: steps.compile.outputs.status != 'success' && !cancelled()
       run: |
         echo "构建失败，请检查日志"
         exit 1
