@@ -97,13 +97,15 @@ jobs:
         
     - name: 缓存提交信息
       uses: actions/cache@v3
+      id: cache-commit
+      if: success()
       with:
         path: |
           .cache/updates_1.txt
           .cache/updates_2.txt
           .cache/updates_3.txt
           .cache/last_commit.txt
-        key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.run_id }}
+        key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.sha }}
         restore-keys: |
           commit-cache-${{ env.CACHE_VERSION }}-
 
@@ -120,9 +122,15 @@ jobs:
         echo "当前最新提交: ${current_commit}"
         
         # 读取或初始化上次构建的提交记录
-        if [ -f ../.cache/last_commit.txt ]; then
+        if [ -f ../.cache/last_commit.txt ] && [ -s ../.cache/last_commit.txt ]; then
           last_commit=$(cat ../.cache/last_commit.txt)
           echo "上次构建的提交: ${last_commit}"
+          
+          # 验证提交hash的有效性
+          if ! git rev-parse --quiet --verify ${last_commit}^{commit} >/dev/null; then
+            echo "缓存的提交hash无效，使用当前HEAD的父提交"
+            last_commit=$(git rev-parse HEAD^)
+          fi
           
           # 检查提交是否相同
           if [ "$last_commit" = "$current_commit" ]; then
@@ -131,7 +139,7 @@ jobs:
             exit 0
           fi
         else
-          echo "首次运行，使用HEAD^作为比较基准"
+          echo "没有找到有效的last_commit记录，使用HEAD^作为比较基准"
           last_commit=$(git rev-parse HEAD^)
           echo "使用上一次提交: ${last_commit}"
         fi
@@ -161,11 +169,13 @@ jobs:
           git log --format='%H|%h|%s|%an|%at' $last_commit..$current_commit
         } > ../.cache/updates_1.txt
         
-        # 确认更新记录生成后，更新最后构建的提交记录
+        # 保存当前提交记录
         echo "${current_commit}" > ../.cache/last_commit.txt
         echo "已更新 last_commit 到: ${current_commit}"
         echo "has_updates=true" >> $GITHUB_OUTPUT
-    
+        
+        echo "::endgroup::"
+
     - name: 缓存构建动作
       uses: klever1988/cachewrtbuild@main
       with:

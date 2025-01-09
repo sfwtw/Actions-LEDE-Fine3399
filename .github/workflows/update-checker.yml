@@ -33,14 +33,14 @@ jobs:
             .cache/updates_2.txt
             .cache/updates_3.txt
             .cache/last_commit.txt
-          key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.run_id }}
+          key: commit-cache-${{ env.CACHE_VERSION }}-${{ github.sha }}
           restore-keys: |
             commit-cache-${{ env.CACHE_VERSION }}-
 
       - name: 检查更新
         id: check_updates
         env: 
-          GH_TOKEN: ${{ secrets.token }}
+          GH_TOKEN: ${{ secrets.TOKEN }}
         run: |
           set -e
           mkdir -p .cache
@@ -69,6 +69,7 @@ jobs:
               echo "has_updates=true" >> $GITHUB_OUTPUT
               
               # 使用 gh cli 触发编译工作流
+              cd ..
               gh workflow run openwrt-builder.yml -f event_type=Source-Code-Update || {
                 echo "触发编译失败，尝试使用 API 方式"
                 curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
