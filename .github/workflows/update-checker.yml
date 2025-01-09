@@ -39,6 +39,8 @@ jobs:
 
       - name: 检查更新
         id: check_updates
+        env: 
+          GH_TOKEN: ${{ secrets.token }}
         run: |
           set -e
           mkdir -p .cache
