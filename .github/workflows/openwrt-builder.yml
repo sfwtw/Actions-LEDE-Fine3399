@@ -97,7 +97,6 @@ jobs:
         
     - name: 缓存提交信息
       uses: actions/cache@v3
-      if: !cancelled()
       with:
         path: |
           .cache/updates_1.txt
